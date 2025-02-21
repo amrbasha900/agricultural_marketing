@@ -1,0 +1,235 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2024-07-18 17:44:50.295646",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_zpo6",
+  "naming_series",
+  "company",
+  "column_break_rame",
+  "posting_date",
+  "posting_time",
+  "amended_from",
+  "section_break_nwud",
+  "supplier_details_column",
+  "supplier",
+  "supplier_name",
+  "column_break_yjsp",
+  "customer",
+  "customer_name",
+  "column_break_pmbl",
+  "pamper",
+  "pamper_name",
+  "items_section",
+  "items",
+  "commissions_section",
+  "commissions",
+  "commission_invoice_reference",
+  "pampers_commissions_section",
+  "pamper_commissions",
+  "section_break_cwcc",
+  "grand_total",
+  "total_commissions_and_taxes"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_zpo6",
+   "fieldtype": "Section Break",
+   "label": "Invoice Details"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Invoice Form",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Series",
+   "options": "ACC-INV-.YYYY.-",
+   "reqd": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "default": "Now",
+   "fieldname": "posting_time",
+   "fieldtype": "Time",
+   "label": "Posting Time"
+  },
+  {
+   "fieldname": "column_break_rame",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_nwud",
+   "fieldtype": "Section Break",
+   "label": "Basic Info"
+  },
+  {
+   "bold": 1,
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "supplier.supplier_name",
+   "fieldname": "supplier_name",
+   "fieldtype": "Data",
+   "label": "Supplier Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_yjsp",
+   "fieldtype": "Column Break",
+   "label": "Customer Details"
+  },
+  {
+   "fieldname": "column_break_pmbl",
+   "fieldtype": "Column Break",
+   "label": "Pamper Details"
+  },
+  {
+   "fieldname": "supplier_details_column",
+   "fieldtype": "Column Break",
+   "label": "Supplier Details"
+  },
+  {
+   "bold": 1,
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fetch_from": "customer.customer_name",
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "pamper",
+   "fieldtype": "Link",
+   "label": "Pamper",
+   "options": "Customer"
+  },
+  {
+   "fetch_from": "pamper.customer_name",
+   "fieldname": "pamper_name",
+   "fieldtype": "Data",
+   "label": "Pamper Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Invoice Form Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "pampers_commissions_section",
+   "fieldtype": "Section Break",
+   "label": "Pamper's Commissions"
+  },
+  {
+   "fieldname": "pamper_commissions",
+   "fieldtype": "Table",
+   "label": "Pamper commissions",
+   "options": "Invoice Form Pamper Commission"
+  },
+  {
+   "fieldname": "commissions_section",
+   "fieldtype": "Section Break",
+   "label": "Commissions"
+  },
+  {
+   "fieldname": "commissions",
+   "fieldtype": "Table",
+   "label": "Commissions",
+   "options": "Invoice Form Commission"
+  },
+  {
+   "fieldname": "section_break_cwcc",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "label": "Grand Total",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "commission_invoice_reference",
+   "fieldtype": "Link",
+   "label": "Commission Invoice Reference",
+   "options": "Sales Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_commissions_and_taxes",
+   "fieldtype": "Currency",
+   "label": "Total Commissions and Taxes",
+   "options": "currency",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2024-08-18 00:02:57.113947",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "Invoice Form",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

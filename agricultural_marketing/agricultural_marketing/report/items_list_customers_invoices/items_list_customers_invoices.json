@@ -1,0 +1,27 @@
+{
+ "add_total_row": 0,
+ "columns": [],
+ "creation": "2024-08-25 20:33:28.512370",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "",
+ "letterhead": null,
+ "modified": "2024-08-25 21:05:18.345074",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "Items list customers invoices",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Invoice Form",
+ "report_name": "Items list customers invoices",
+ "report_type": "Script Report",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ]
+}

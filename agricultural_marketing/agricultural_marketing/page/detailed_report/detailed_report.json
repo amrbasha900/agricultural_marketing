@@ -1,0 +1,23 @@
+{
+ "content": null,
+ "creation": "2025-01-04 17:57:20.152172",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2025-01-04 17:57:20.152172",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "detailed-report",
+ "owner": "Administrator",
+ "page_name": "detailed-report",
+ "roles": [
+  {
+   "role": "Accounts Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Detailed report"
+}

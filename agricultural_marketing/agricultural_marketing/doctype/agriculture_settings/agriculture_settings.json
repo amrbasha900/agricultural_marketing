@@ -1,0 +1,109 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-07-23 23:36:35.951891",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "generate_commission_invoices_automatically",
+  "calculate_opening_balance_with_totals",
+  "new_report_layout",
+  "ignore_zero_transactions",
+  "hide_decimal",
+  "customer_commission_percentage",
+  "column_break_nyvz",
+  "commission_item",
+  "pos_profile",
+  "default_tax",
+  "font_size"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer_commission_percentage",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Customer Commission Percentage",
+   "reqd": 1
+  },
+  {
+   "fieldname": "default_tax",
+   "fieldtype": "Link",
+   "label": "Default Tax",
+   "options": "Sales Taxes and Charges Template"
+  },
+  {
+   "default": "0",
+   "fieldname": "generate_commission_invoices_automatically",
+   "fieldtype": "Check",
+   "label": "Generate Commission Invoices Automatically"
+  },
+  {
+   "fieldname": "column_break_nyvz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "label": "POS Profile",
+   "options": "POS Profile"
+  },
+  {
+   "fieldname": "commission_item",
+   "fieldtype": "Link",
+   "label": "Commission Item",
+   "options": "Item"
+  },
+  {
+   "default": "0",
+   "fieldname": "calculate_opening_balance_with_totals",
+   "fieldtype": "Check",
+   "label": "Calculate Opening Balance with Totals"
+  },
+  {
+   "default": "0",
+   "fieldname": "new_report_layout",
+   "fieldtype": "Check",
+   "label": "New Report Layout "
+  },
+  {
+   "default": "0",
+   "fieldname": "ignore_zero_transactions",
+   "fieldtype": "Check",
+   "label": "Ignore Zero Transactions In Reports"
+  },
+  {
+   "fieldname": "font_size",
+   "fieldtype": "Int",
+   "label": "Reports Font Size"
+  },
+  {
+   "default": "0",
+   "fieldname": "hide_decimal",
+   "fieldtype": "Check",
+   "label": "Hide Decimal in Reports"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-01-30 00:07:35.751317",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "Agriculture Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

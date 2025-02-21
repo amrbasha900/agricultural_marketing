@@ -1,0 +1,205 @@
+{
+  "charts": [],
+  "content": "[{\"id\":\"zW8e7j728U\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Agriculture Marketing</span>\",\"col\":12}},{\"id\":\"kjt-421HCB\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":5}},{\"id\":\"goITqpXKd8\",\"type\":\"card\",\"data\":{\"card_name\":\"Doctypes\",\"col\":5}},{\"id\":\"z1MnMBs5Mb\",\"type\":\"card\",\"data\":{\"card_name\":\"General Reports\",\"col\":4}},{\"id\":\"FW5yzDt7Rz\",\"type\":\"card\",\"data\":{\"card_name\":\"Supplier Reports\",\"col\":4}},{\"id\":\"NG5lVtpWLo\",\"type\":\"card\",\"data\":{\"card_name\":\"Customer Reports\",\"col\":4}}]",
+  "creation": "2024-07-27 17:53:30.500530",
+  "custom_blocks": [],
+  "docstatus": 0,
+  "doctype": "Workspace",
+  "for_user": "",
+  "hide_custom": 0,
+  "icon": "",
+  "idx": 1,
+  "indicator_color": "blue",
+  "is_hidden": 0,
+  "label": "Agriculture Marketing",
+  "links": [
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Download Reports",
+      "link_count": 0,
+      "link_to": "statement-forms",
+      "link_type": "Page",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Collection Form",
+      "link_count": 0,
+      "link_to": "collection-form",
+      "link_type": "Page",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Settings",
+      "link_count": 2,
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Card Break"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Agriculture Settings",
+      "link_count": 0,
+      "link_to": "Agriculture Settings",
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Trial Balance Settings",
+      "link_count": 0,
+      "link_to": "Trial Balance Settings",
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Doctypes",
+      "link_count": 2,
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Card Break"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Invoice Forms",
+      "link_count": 0,
+      "link_to": "Invoice Form",
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "GL Entries",
+      "link_count": 0,
+      "link_to": "GL Entry",
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Supplier Reports",
+      "link_count": 2,
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Card Break"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 1,
+      "label": "Items list suppliers invoices",
+      "link_count": 0,
+      "link_to": "Items list suppliers invoices",
+      "link_type": "Report",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 1,
+      "label": "Items list grouped by supplier",
+      "link_count": 0,
+      "link_to": "Items list grouped by supplier",
+      "link_type": "Report",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Customer Reports",
+      "link_count": 2,
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Card Break"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 1,
+      "label": "Items list customers invoices",
+      "link_count": 0,
+      "link_to": "Items list customers invoices",
+      "link_type": "Report",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 1,
+      "label": "Items list grouped by customer",
+      "link_count": 0,
+      "link_to": "Items list grouped by customer",
+      "link_type": "Report",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "General Reports",
+      "link_count": 3,
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Card Break"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Collection Form",
+      "link_count": 0,
+      "link_to": "collection-form",
+      "link_type": "Page",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
+      "label": "Statement Forms",
+      "link_count": 0,
+      "link_to": "statement-forms",
+      "link_type": "Page",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 1,
+      "label": "DR Trial Balance",
+      "link_count": 0,
+      "link_to": "DR Trial Balance",
+      "link_type": "Report",
+      "onboard": 0,
+      "type": "Link"
+    }
+  ],
+  "modified": "2025-01-27 04:04:24.424052",
+  "modified_by": "Administrator",
+  "module": "Agricultural Marketing",
+  "name": "Agriculture Marketing",
+  "number_cards": [],
+  "owner": "Administrator",
+  "parent_page": "",
+  "public": 1,
+  "quick_lists": [],
+  "roles": [],
+  "sequence_id": 6.0,
+  "shortcuts": [],
+  "title": "Agriculture Marketing"
+}

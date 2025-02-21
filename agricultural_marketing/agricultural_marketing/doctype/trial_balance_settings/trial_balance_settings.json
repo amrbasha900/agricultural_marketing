@@ -1,0 +1,127 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "creation": "2025-01-14 05:22:27.820016",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "cash_setting_section_section",
+    "cash_section",
+    "customers_setting_section_section",
+    "customers_section",
+    "suppliers_setting_section_section",
+    "suppliers_section",
+    "share_capital_setting_section_section",
+    "share_capital_section",
+    "taxes_setting_section_section",
+    "taxes_section",
+    "income_settings_section_section",
+    "income_section",
+    "expense_settings_section_section",
+    "expense_section"
+  ],
+  "fields": [
+    {
+      "fieldname": "cash_section",
+      "fieldtype": "Table",
+      "label": "Cash Section",
+      "options": "Trial Balance Cash Section"
+    },
+    {
+      "fieldname": "cash_setting_section_section",
+      "fieldtype": "Section Break",
+      "label": "Cash Setting Section"
+    },
+    {
+      "fieldname": "customers_setting_section_section",
+      "fieldtype": "Section Break",
+      "label": "Customers Setting Section"
+    },
+    {
+      "fieldname": "customers_section",
+      "fieldtype": "Table",
+      "label": "Customers Section",
+      "options": "Trial Balance Customer Section"
+    },
+    {
+      "fieldname": "suppliers_setting_section_section",
+      "fieldtype": "Section Break",
+      "label": "Suppliers Setting Section"
+    },
+    {
+      "fieldname": "suppliers_section",
+      "fieldtype": "Table",
+      "label": "Suppliers Section",
+      "options": "Trial Balance Supplier Section"
+    },
+    {
+      "fieldname": "share_capital_setting_section_section",
+      "fieldtype": "Section Break",
+      "label": "Share Capital Setting Section"
+    },
+    {
+      "fieldname": "share_capital_section",
+      "fieldtype": "Table",
+      "label": "Share Capital Section",
+      "options": "Trial Balance Share Capital Section"
+    },
+    {
+      "fieldname": "taxes_setting_section_section",
+      "fieldtype": "Section Break",
+      "label": "Taxes Setting Section"
+    },
+    {
+      "fieldname": "taxes_section",
+      "fieldtype": "Table",
+      "label": "Taxes Section",
+      "options": "Trial Balance Tax Section"
+    },
+    {
+      "fieldname": "income_settings_section_section",
+      "fieldtype": "Section Break",
+      "label": "Income Settings Section"
+    },
+    {
+      "fieldname": "income_section",
+      "fieldtype": "Table",
+      "label": "Income Section",
+      "options": "Trial Balance Income Section"
+    },
+    {
+      "fieldname": "expense_settings_section_section",
+      "fieldtype": "Section Break",
+      "label": "Expense Settings Section"
+    },
+    {
+      "fieldname": "expense_section",
+      "fieldtype": "Table",
+      "label": "Expense Section",
+      "options": "Trial Balance Expense Section"
+    }
+  ],
+  "issingle": 1,
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2025-01-15 02:52:53.466432",
+  "modified_by": "Administrator",
+  "module": "Agricultural Marketing",
+  "name": "Trial Balance Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}

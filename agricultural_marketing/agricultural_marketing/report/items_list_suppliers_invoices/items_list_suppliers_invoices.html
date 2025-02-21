@@ -1,0 +1,64 @@
+{% var company = data[data.length - 1] %}
+{% defaults = frappe.defaults %}
+{% default_currency = __(defaults.get_default('currency')) %}
+<hr>
+<h2 class="text-center">{%= __(report.report_name) %}</h2>
+<div class="row" style="display: flex; justify-content: space-between;">
+  <div class="col-xs-4" style="display: flex; justify-content: flex-start;">
+    <h5 class="text-center"> {% if filters.supplier %} {%= __("Supplier")%} {%= filters.supplier %} {% endif %}
+    </h5>
+  </div>
+ <div class="col-xs-4" style="display: flex; justify-content: flex-start;">
+  <h5 class="text-center"> {{ __("Printed On") }}
+      {%= frappe.datetime.str_to_user(frappe.datetime.get_datetime_as_string()) %}
+    </h5>
+</div>
+</div>
+<div class="row" style="display: flex; justify-content: space-between;">
+    {% if filters.from_date %}
+    <div class="col-xs-4" style="display: flex; justify-content: flex-start;">
+      <h5 class="text-center"> {{ __("From Date") }}
+          {%= frappe.datetime.str_to_user(filters.from_date) %} </h5>
+    </div>
+    {% endif %}
+    {% if filters.to_date %}
+    <div class="col-xs-4" style="display: flex; justify-content: flex-end;">
+      <h5 class="text-center"> {{ __("To Date") }}
+          {%= frappe.datetime.str_to_user(filters.to_date) %}
+        </h5>
+  </div>
+    {% endif %}
+</div>
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th style="width: 25%">{%= __("Invoice No") %}</th>
+            <th style="width: 10%">{%= __("Date") %}</th>
+            <th style="width: 10%">{%= __("Item") %}</th>
+            <th style="width: 8%">{%= __("Quantity") %}</th>
+            <th style="width: 8%">{%= __("Price") %}</th>
+            <th style="width: 8%">{%= __("Total") %}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for(var i=0, l=data.length; i< l; i++) { %}
+            <tr>
+                <td>{%= data[i]["invoice_id"] %}</td>
+                <td>{%= data[i]["date"] %}</td>
+                <td>{%= data[i]["item_name"] %}</td>
+                <td> {% if data[i]["qty"] %}
+                        {%= data[i]["qty"] %}
+                    {% endif %}
+                </td>
+                <td> {% if data[i]["price"] %}
+                        {%= format_currency(data[i]["price"], default_currency, 2) %}
+                    {% endif %}
+                </td>
+                <td> {% if data[i]["total"] %}
+                        {%= format_currency(data[i]["total"], default_currency, 2) %}
+                    {% endif %}
+                </td>
+            </tr>
+        {% } %}
+    </tbody>
+</table>

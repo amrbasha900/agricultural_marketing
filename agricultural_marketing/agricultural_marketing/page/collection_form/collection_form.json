@@ -1,0 +1,23 @@
+{
+ "content": null,
+ "creation": "2024-09-16 23:59:41.347312",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2024-10-01 13:11:43.634216",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "collection-form",
+ "owner": "Administrator",
+ "page_name": "collection-form",
+ "roles": [
+  {
+   "role": "Accounts Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Collection Form"
+}

@@ -1,0 +1,118 @@
+{% set is_supplier=true %}
+{% if filters.party_type == "Supplier" %}
+{% set is_supplier = true %}
+{% else %}
+{% set is_supplier = false %}
+{% endif %}
+<html dir="{{ layout_direction }}" lang="{{ lang }}">
+<style>
+    body {
+        width: fit-content;
+        margin: auto;
+    }
+    table, th, td{
+      border: 1px solid black;
+      border-collapse: collapse;
+      text-align: center;
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+    .summary-table {
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+        font-size: {{ font_size }}px;
+    }
+    img {
+        width: 100%;
+    }
+    .date-section {
+        text-align:center;
+        padding-right: 10%;
+        padding-left: 10%
+    }
+</style>
+<body>
+
+<!--Company Details-->
+{% if letter_head %}
+<div>
+    {{ letter_head.content }}
+</div>
+{% else %}
+{% if company_defaults %}
+<table class="header-details" style="border:none;">
+    <tbody>
+    <tr style="border:none;">
+        <td style="border:none; width:40%; text-align:center">
+            {{ filters.company }} <br>
+            {{ frappe.utils.strip_html(company_defaults.address) }} <br>
+            {{ company_defaults.phone_no }}
+        </td>
+        <td style="border:none; width:35%;">
+            {% if company_defaults.image %}
+            <img src="{{ company_defaults.image }}" style="width:60px; height:60px"/>
+            {% endif %}
+        </td>
+        <td style="border:none; width:25%; text-align: center">
+            {{ _("Printed Date") }} :{{ frappe.utils.getdate(frappe.utils.nowdate()) }} <br>
+            {{ _("Printed Time") }} :{{ frappe.utils.get_time_str(frappe.utils.now()) }}
+        </td>
+    </tr>
+    </tbody>
+</table>
+{% endif %}
+{% endif %}
+<hr>
+
+<div class="row date-section">
+    <span style="margin-left: 60px; margin-right: 60px;">{{ _("From Date") }}: {{ filters.from_date }}</span>
+    <span>{{ _("To Date") }}: {{ filters.to_date }}</span>
+</div>
+
+{% if data %}
+<!--Summary Table-->
+{% for party in data %}
+{% set party_data = data[party] %}
+<table class="table summary-table" id="summary">
+    <thead>
+    <tr>
+        <th colspan="7">
+            {% if is_supplier %} {{ _(" Supplier Name") }} {% else %} {{ _("Customer Name") }} {% endif %} : {{ party }}
+        </th>
+    </tr>
+    <tr>
+        <th style="width: 25%"> {{ _("Reference") }}</th>
+        <th style="width: 13%"> {{ _("Date") }}</th>
+        <th style="width: 8%"> {{ _("Debit") }}</th>
+        <th style="width: 8%"> {{ _("Credit") }}</th>
+        <th style="width: 8%%"> {{ _("Price") }}</th>
+        <th style="width: 8%%"> {{ _("Quantity") }}</th>
+        <th style="width: 20%"> {{ _("Statement") }}</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% if party_data %}
+    {% for item in party_data %}
+    <tr>
+        <td> {{ item.reference_id }}</td>
+        <td> {% if item.date %} {{ item.date }} {% endif %}</td>
+        <td> {% if item.debit %} {{ item.debit }} {% endif %}</td>
+        <td> {% if item.credit %} {{ item.credit }} {% endif %}</td>
+        {% if item.doctype == "Invoice Form" %}
+        <td> {{ item.price }}</td>
+        <td> {{ item.qty }}</td>
+        <td> {{ item.statement }}</td>
+        {% else %}
+        <td colspan="3"> {{ item.statement }}</td>
+        {% endif %}
+    </tr>
+    {% endfor %}
+    {% endif %}
+    </tbody>
+</table>
+<hr>
+{% endfor %}
+{% endif %}
+</body>
+</html>

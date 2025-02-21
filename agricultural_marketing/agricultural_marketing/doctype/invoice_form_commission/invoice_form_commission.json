@@ -1,0 +1,66 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-07-18 20:41:47.288213",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item",
+  "price",
+  "commission",
+  "taxes",
+  "commission_total"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "price",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Price",
+   "options": "currency"
+  },
+  {
+   "columns": 1,
+   "fieldname": "commission",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Commission"
+  },
+  {
+   "columns": 1,
+   "fieldname": "taxes",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Taxes"
+  },
+  {
+   "columns": 2,
+   "fieldname": "commission_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Commission Total",
+   "options": "currency"
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item",
+   "options": "Item"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2024-08-15 01:45:26.699232",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "Invoice Form Commission",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
