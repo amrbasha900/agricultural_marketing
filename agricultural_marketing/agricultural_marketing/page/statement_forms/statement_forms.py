@@ -8,8 +8,7 @@ from frappe.utils.jinja_globals import is_rtl
 from frappe.utils.pdf import get_pdf as _get_pdf
 from frappe.query_builder.functions import Sum
 from pypika import Case
-
-
+import time
 @frappe.whitelist()
 def get_reports(filters):
     data = frappe._dict()
@@ -477,3 +476,113 @@ def get_draft_total_payments(filters, party):
     total_paid_amount = sum([re["paid_amount"] for re in result if re["paid_amount"]]) or 0
 
     return total_paid_amount
+
+
+@frappe.whitelist()
+def send_whatsapp_msg(filters):
+    data = frappe._dict()
+    file_urls = []
+    whatsapp_messages = []
+    letter_head = None
+    if isinstance(filters, str):
+        filters = json.loads(filters)
+
+    default_letter_head = frappe.get_value("Company", filters.get("company"), "default_letter_head")
+    if default_letter_head:
+        letter_head = frappe.get_doc("Letter Head", default_letter_head)
+
+    # Get Data
+    data = get_data(data, filters)
+    if not data:
+        return {
+            "error": "No data matches the chosen criteria"
+        }
+    html_format = get_html_format()
+
+    for key, value in data.items():
+        # Get summary table data
+        party_summary = get_party_summary(filters=filters, party_type=filters.get("party_type"), party=key,
+                                          party_data=value)
+
+        header_details = get_header_data(filters.get("party_group"), key)
+        font_size = frappe.db.get_single_value("Agriculture Settings", "font_size") or 14
+
+        context = {
+            "letter_head": letter_head,
+            "header": header_details,
+            "summary": party_summary,
+            "items": value.get("items"),
+            "payments": value.get("payments"),
+            "filters": filters,
+            "lang": frappe.local.lang,
+            "layout_direction": "rtl" if is_rtl() else "ltr",
+            "font_size": font_size
+        }
+
+        html = frappe.render_template(html_format, context)
+        content = _get_pdf(html, {"orientation": "Portrait"})
+        file_name = "{0}-{1}.pdf".format(key, str(random.randint(1000, 9999)))
+        file_doc = frappe.new_doc("File")
+        file_doc.update({
+            "file_name": file_name,
+            "is_private": 0,
+            "content": content
+        })
+        file_doc.save(ignore_permissions=True)
+        file_urls.append(file_doc.file_url)
+        whatsapp_messages.append(create_whatsapp_messages(
+            party_type=filters.get("party_type"),
+            party_name=key,
+            pdf_url=file_doc.file_url,
+            reference_document = 'Page',
+            document_name = 'statement-forms',
+        ))
+
+    frappe.db.commit()
+    
+    return {"success": f"WhatsApp message logged"}
+
+@frappe.whitelist()
+def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, reference_document=None, document_name=None):
+    """
+    Inserts a new record into the WhatsApp Messages Doctype with an attached PDF report and WhatsApp number.
+    """
+
+    if not (party_type and party_name and pdf_url):
+        return {"error": "Missing required parameters."}
+
+    try:
+        # Fetch the WhatsApp Number from either Customer or Supplier
+        whatsapp_number = frappe.get_value(party_type, party_name, "whatsapp_number")
+        whatsapp_message = frappe.get_value(party_type, party_name, "default_whatsapp_message")
+
+        if not whatsapp_number:
+            return {"error": f"WhatsApp number not found for {party_name}"}
+
+        # Create a new WhatsApp Messages entry
+        whatsapp_messages = frappe.get_doc({
+            "doctype": "WhatsApp Messages",
+            "party_type": party_type,
+            "party_name": party_name,
+            "phone_number": whatsapp_number,
+            "has_media": 1,
+            "message": whatsapp_message or "pls",
+            "status": "Queued",
+            "attach": pdf_url,
+            "auto_send":1,
+            "reference_document": reference_document,
+            "document_name": document_name
+        })
+        whatsapp_messages.insert(ignore_permissions=True)
+        frappe.db.commit()
+        time.sleep(3)
+        return whatsapp_messages.name or None
+
+    except Exception as e:
+        frappe.log_error(f"Error in send_whatsapp_msg: {str(e)}", "WhatsApp Messaging")
+        return {"error": str(e)}
+
+@frappe.whitelist()
+def task_msg_creation(filters):
+    frappe.enqueue(method=send_whatsapp_msg, filters=filters, job_name="create pdf and whatsapp for Statement Forms")
+    return {"success": f"WhatsApp message logged"}

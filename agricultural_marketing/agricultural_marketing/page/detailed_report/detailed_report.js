@@ -207,5 +207,35 @@ frappe.pages['detailed-report'].on_page_load = function(wrapper) {
             })
         }
     }
+    function sendWhatsAppMsg(filters){
+        frappe.dom.freeze(`<img src="/assets/agricultural_marketing/img/whatsapp.gif" >`);
+        var final_filters = {};
+        for (let key in filters) {
+            final_filters[key] = filters[key].value;
+        }
+        
+        validateMandatoryFilters(final_filters);
+        if (!filters.party_type || !filters.party) {
+            frappe.throw(__('Please select a Party Type and Party before sending a message.'));
+            return;
+        }
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.detailed_report.detailed_report.task_msg_creation',
+            args: {
+                filters: final_filters
+            },
+            callback: function (res) {
+                if (res.message.success) {
+                    frappe.msgprint(__('Finish Send WhatsApp Messages Successfully'));
+                    frappe.dom.unfreeze();
+                } else {
+                    frappe.dom.unfreeze();
+                    frappe.msgprint(__('Failed to log WhatsApp message: ') + res.message.error);
+                }
+            }
+        });
+    }
     let $btn = page.set_primary_action( __('Get Reports'), () => { get_reports(page.fields_dict) });
+    let sendWhatsappBtn = page.set_secondary_action(__('Send WhatsApp Message'), () => { sendWhatsAppMsg(page.fields_dict) });
+
 }

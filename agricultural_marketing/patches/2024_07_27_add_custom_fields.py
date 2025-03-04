@@ -24,6 +24,13 @@ def execute():
                 "fieldname": "commission_percentage",
                 "fieldtype": "Percent",
                 "insert_after": "is_transporter"
+            },
+            {
+                "label": _("WhatsApp Number"),
+                "fieldname": "whatsapp_number",
+                "fieldtype": "Phone",
+                "insert_after": "email_id",
+                "default": "+966-"
             }
         ],
         "Customer": [
@@ -57,6 +64,13 @@ def execute():
                 "fieldtype": "Percent",
                 "insert_after": "account_manager",
                 "depends_on": "eval:doc.is_farmer==1"
+            },
+            {
+                "label": _("WhatsApp Number"),
+                "fieldname": "whatsapp_number",
+                "fieldtype": "Phone",
+                "insert_after": "email_id",
+                "default": "+966-"
             }
         ],
         "Customer Group": [
