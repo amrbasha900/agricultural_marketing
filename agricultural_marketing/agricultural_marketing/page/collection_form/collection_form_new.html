@@ -42,7 +42,7 @@
     <tr style="border:none;">
         <td style="border:none; width:40%; text-align:center">
             {{ filters.company }} <br>
-            {{ frappe.utils.strip_html(company_defaults.address) }} <br>
+            {% if company_defaults.address %} {{ frappe.utils.strip_html(company_defaults.address) }}{% endif %} <br>
             {{ company_defaults.phone_no }}
         </td>
         <td style="border:none; width:35%;">

@@ -45,6 +45,7 @@ def execute(filters):
     }
 
     html = frappe.render_template(html_format, context)
+
     if filters.get("open_pdf"):
         return {"html": html}
     content = _get_pdf(html, {"orientation": "Portrait"})
