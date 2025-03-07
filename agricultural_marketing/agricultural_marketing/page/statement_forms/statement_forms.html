@@ -15,7 +15,7 @@
 {% else %}
 {% set neglect_items = false %}
 {% endif %}
-<html dir="{{ layout_direction }}" lang="{{ lang }}">
+<html dir="rtl" lang="ar">
 <style>
     table, th, td{
       width: 100%;
@@ -44,55 +44,60 @@
 {{ letter_head.content }}
 <hr>
 {% endif %}
-<table class="header-details" style="border:none;">
+<table class="header-details" style="border:none;direction:rtl;">
     <tbody>
     <tr style="border:none;">
-        <td style="border:none; width:50%; {% if is_rtl %} text-align:right {% else %} text-align:left {% endif %}">
+        <td style="border:none; width:50%;text-align:center;direction:rtl;">
             <h4>
-                {{ _("Statement Form") }} - {{ _("Items") }}
+                {{ _("كشف حساب مفصل") }} - {{ _("الاصناف") }}
                 <br>
                 {% if is_supplier %}
-                {{ _("Supplier Name") }}
+                {{ _("اسم المورد") }}
                 {% else %}
-                {{ _("Customer Name") }}
+                {{ _("اسم العميل") }}
                 {% endif %} : {{header.party }}
             </h4>
         </td>
         <td
-                style="border:none; width:50%; {% if is_rtl %} text-align:left {% else %} text-align:right {% endif %}">
+                style="border:none; width:50%;text-align:center;direction:rtl;">
             <h4>
-                {{ _("Printed Date") }} :{{ frappe.utils.getdate(frappe.utils.nowdate()) }}
+                {{ _("تاريخ الطباعة") }} :{{ frappe.utils.getdate(frappe.utils.nowdate()) }}
                 <br>
-                {{ _("Printed Time") }} :{{ frappe.utils.get_time_str(frappe.utils.now()) }}
+                {{ _("وقت الطباعة") }} :{{ frappe.utils.get_time_str(frappe.utils.now()) }}
             </h4>
         </td>
     </tr>
     </tbody>
 </table>
 <hr>
-<div style="text-align:center;">
-    {{ _("From Date") }}: {{ filters.from_date }} &nbsp;
-    {{ _("To Date") }}: {{ filters.to_date }}
+<div style="text-align:center;direction:rtl;">
+    {{ _("من تاريخ") }}: {{ filters.from_date }} &nbsp;
+    {{ _("إلى تاريخ") }}: {{ filters.to_date }}
 </div>
 <hr>
 {% if summary %}
 <!--Summary Table-->
 <div>
-    <h5> {{ _("Summary") }} </h5>
+    <h5> {{ _("ملخص") }} </h5>
 </div>
-<table class="table summary-table" id="summary">
+<table class="table summary-table" id="summary" style="direction:rtl;">
     <thead>
     <tr>
-        <th style="width: 25%"> {{ _("Statement") }}</th>
-        <th style="width: 25%"> {{ _("Debit") }}</th>
-        <th style="width: 25%"> {{ _("Credit") }}</th>
-        <th style="width: 25%"> {{ _("Balance") }}</th>
+        <th style="width: 25%"> {{ _("البيان") }}</th>
+        <th style="width: 25%"> {{ _("منه") }}</th>
+        <th style="width: 25%"> {{ _("له") }}</th>
+        <th style="width: 25%"> {{ _("الموازنه") }}</th>
     </tr>
     </thead>
     <tbody>
     {% for sum in summary %}
     <tr>
-        <td> {{ sum.statement }}</td>
+        <td> {% if sum.statement == "Opening Balance" %} الرصيد الافتتاحى 
+            {% elif sum.statement  == "Total" %} الاجمالي 
+            {% elif sum.statement == "Duration Selling" %}مبيعات الفترة
+            {% elif sum.statement == "Duration Payments" %}المدفوعات خلال الفترة 
+            {% elif sum.statement %}{{sum.statement}}
+            {% endif %}</td>
         <td> {% if sum.debit %} {{ sum.debit }} {% endif %}</td>
         <td> {% if sum.credit %} {{ sum.credit }} {% endif %}</td>
         <td> {% if sum.balance %} {{ sum.balance }} {% endif %}</td>
@@ -106,25 +111,25 @@
 {% if items %}
 <!--Items Details Table-->
 <div>
-    <h5> {{ _("Items Details") }} </h5>
+    <h5> {{ _("تفاصيل الأصناف") }} </h5>
 </div>
 <table class="table" id="items">
     <thead>
     <tr>
-        <th style="width: 10%"> {{ _("Date") }}</th>
-        <th style="width: 15%"> {{ _("Invoice No") }}</th>
+        <th style="width: 10%"> {{ _("التاريخ") }}</th>
+        <th style="width: 15%"> {{ _("رقم الفاتورة") }}</th>
         {% if not filters.neglect_items %}
-        <th style="width: 15%"> {{ _("Item") }}</th>
-        <th style="width: 8%"> {{ _("Quantity") }}</th>
-        <th style="width:8%"> {{ _("Price") }}</th>
+        <th style="width: 15%"> {{ _("السلعة") }}</th>
+        <th style="width: 8%"> {{ _("الكمية") }}</th>
+        <th style="width:8%"> {{ _("السعر") }}</th>
         {% endif %}
-        <th style="width: 8%"> {{ _("Total") }}</th>
+        <th style="width: 8%"> {{ _("الإجمالى") }}</th>
     </tr>
     </thead>
     <tbody>
     {% for item in items %}
     <tr>
-        <td> {{ item.date }}</td>
+        <td> {% if item.date == "Total" %} الإجمالى{% else %} {{ item.date }}{% endif %}</td>
         <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %}</td>
         {% if not filters.neglect_items %}
         <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
@@ -142,25 +147,25 @@
 <!--Payments Table-->
 {% if payments %}
 <div>
-    <h5> {{ _("Payments Details") }} </h5>
+    <h5> {{ _("تفاصيل الدفعات") }} </h5>
 </div>
 <table class="table" id="payments">
     <thead>
     <tr>
-        <th style="width: 10%"> {{ _("Date") }}</th>
-        <th style="width: 18%"> {{ _("Payment No") }}</th>
-        <th style="width: 6%"> {{ _("Mode of Payment") }}</th>
-        <th style="width: 6%"> {{ _("Payment Type") }}</th>
-        <th style="width: 20%"> {{ _("Remarks") }}</th>
-        <th style="width: 10%"> {{ _("Paid Amount") }}</th>
+        <th style="width: 10%"> {{ _("التاريخ") }}</th>
+        <th style="width: 18%"> {{ _("رقم السند") }}</th>
+        <th style="width: 6%"> {{ _("طريقة الدفع") }}</th>
+        <th style="width: 6%"> {{ _("نوع الدفع") }}</th>
+        <th style="width: 20%"> {{ _("ملاحظات") }}</th>
+        <th style="width: 10%"> {{ _("المبلغ المدفوع") }}</th>
     </tr>
     </thead>
     <tbody>
     {% for payment in payments %}
     <tr>
-        <td> {{ payment.date }}</td>
+        <td> {% if payment.date == "Total" %} الإجمالى{% else %} {{ payment.date }}{% endif %}</td>
         <td> {% if payment.payment_id %} {{ payment.payment_id }} {% endif %}</td>
-        <td> {% if payment.mop %} {{ _(payment.mop) }} {% endif %}</td>
+        <td> {% if payment.mop == "Receive" %}تسلم{% elif payment.mop == "Pay" %}دفع  {% elif payment.mop %}{{ _(payment.mop) }} {% endif %}</td>
         <td> {% if payment.payment_type %} {{ _(payment.payment_type) }} {% endif %}</td>
         <td> {% if payment.remarks %} {{ payment.remarks }} {% endif %}</td>
         <td> {{ payment.paid_amount }}</td>

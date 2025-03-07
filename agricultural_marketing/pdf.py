@@ -35,7 +35,7 @@ def get_pdf(filters, template, doctype, orientation="Portrait"):
     except frappe.DoesNotExistError:
         pass
 
-    context = {"letter_head": letter_head, "data": res, "filters": filters, "lang": frappe.local.lang,
+    context = {"letter_head": letter_head, "data": res, "filters": filters, "lang": "ar",
                "layout_direction": "rtl" if (is_rtl()) else "ltr"}
     html = frappe.render_template(html_format, context)
 

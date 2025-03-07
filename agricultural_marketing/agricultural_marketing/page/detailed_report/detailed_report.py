@@ -45,8 +45,8 @@ def get_reports(filters):
             "items": value.get("items"),
             "payments": value.get("payments"),
             "filters": filters,
-            "lang": frappe.local.lang,
-            "layout_direction": "rtl" if is_rtl() else "ltr",
+            "lang": "ar",
+            "layout_direction": "rtl",
             "font_size": font_size
         }
 
@@ -551,7 +551,7 @@ def send_whatsapp_msg(filters):
             "items": value.get("items"),
             "payments": value.get("payments"),
             "filters": filters,
-            "lang": frappe.local.lang,
+            "lang": 'ar',
             "layout_direction": "rtl" if is_rtl() else "ltr",
             "font_size": font_size
         }
