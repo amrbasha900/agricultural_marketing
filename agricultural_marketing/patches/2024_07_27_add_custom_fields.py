@@ -28,9 +28,9 @@ def execute():
             {
                 "label": _("WhatsApp Number"),
                 "fieldname": "whatsapp_number",
-                "fieldtype": "Phone",
+                "fieldtype": "Data",
                 "insert_after": "email_id",
-                "default": "+966-"
+                "default": "+966- "
             }
         ],
         "Customer": [
@@ -68,7 +68,7 @@ def execute():
             {
                 "label": _("WhatsApp Number"),
                 "fieldname": "whatsapp_number",
-                "fieldtype": "Phone",
+                "fieldtype": "Data",
                 "insert_after": "email_id",
                 "default": "+966-"
             }

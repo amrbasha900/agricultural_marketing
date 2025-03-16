@@ -1,0 +1,16 @@
+<table class="table">
+    <thead>
+    <tr>
+        <th scope="col">Invoice ID</th>
+        <th scope="col">Total</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for invoice in data %}
+    <tr>
+        <td>{{ invoice.invoice_id }}</td>
+        <td>{{ invoice.total }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
