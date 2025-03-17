@@ -372,7 +372,12 @@ def process_result_and_totals_for_invoices(result, data, filters):
     for row in result:
         party = row.pop("party")  # Extract and remove party from the row
         invoice_id = row.get("invoice_id")
+        
+        # Ensure 'party' key exists in 'data' with an empty list of 'items' if not present
+        data.setdefault(party, {"items": []})
+        
         if invoice_id in invoices and filters.get("neglect_items"):
+            frappe.msgprint(str(data))
             for d in data[party]["items"]:
                 if d["invoice_id"] == invoice_id:
                     d["total"] += row["total"]
@@ -380,7 +385,7 @@ def process_result_and_totals_for_invoices(result, data, filters):
                         d["commission"] += row["commission"]
                     break
         else:
-            data.setdefault(party, {}).setdefault("items", []).append(row)
+            data[party]["items"].append(row)  # Append the row to the 'items' list
             invoices.add(row["invoice_id"])
 
 
