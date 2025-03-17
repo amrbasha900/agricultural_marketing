@@ -1,7 +1,7 @@
 import json
 import frappe
 from frappe import _
-from customer_commission.overrides.invoice_form import (
+from agricultural_marketing.standard_doctypes.invoice_form import (
     get_supplier_commission_percentage)
 from frappe.utils import getdate
 

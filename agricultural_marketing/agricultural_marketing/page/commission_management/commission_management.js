@@ -106,7 +106,7 @@ frappe.pages['commission-management'].on_page_load = function(wrapper) {
         }
         validateMandatoryFilters(final_filters);
         frappe.call({
-            method: 'customer_commission.customer_commission.page.commission_management.commission_management.get_invoices',
+            method: 'agricultural_marketing.agricultural_marketing.page.commission_management.commission_management.get_invoices',
             args : {
                 filters: final_filters
             },
@@ -116,7 +116,7 @@ frappe.pages['commission-management'].on_page_load = function(wrapper) {
                     let $btn = page.set_primary_action( __('Create Invoices'), () => {
                         frappe.dom.freeze('Processing...');
                         frappe.call({
-                            method: 'customer_commission.customer_commission.page.commission_management.commission_management.generate_commission_invoices',
+                            method: 'agricultural_marketing.agricultural_marketing.page.commission_management.commission_management.generate_commission_invoices',
                             args : {
                                 data: r.message["data"],
                                 filters: final_filters
