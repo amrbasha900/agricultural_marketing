@@ -377,7 +377,6 @@ def process_result_and_totals_for_invoices(result, data, filters):
         data.setdefault(party, {"items": []})
         
         if invoice_id in invoices and filters.get("neglect_items"):
-            frappe.msgprint(str(data))
             for d in data[party]["items"]:
                 if d["invoice_id"] == invoice_id:
                     d["total"] += row["total"]
