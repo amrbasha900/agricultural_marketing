@@ -49,7 +49,7 @@ class InvoiceForm(Document):
         commission_item = self.settings.get("commission_item")
         if commission_item:
             self.set("commissions", [])
-            commission_percentage = get_party_commission_percentage("Customer", self.supplier)
+            commission_percentage = get_party_commission_percentage("Supplier", self.supplier)
 
             default_tax_template = get_tax_template(self)
             tax_rate = frappe.db.get_value("Sales Taxes and Charges",
