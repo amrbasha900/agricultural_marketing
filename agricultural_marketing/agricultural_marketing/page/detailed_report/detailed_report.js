@@ -9,7 +9,10 @@ frappe.pages['detailed-report'].on_page_load = function(wrapper) {
 	    label: __('Consider Drafts'),
 	    fieldtype: 'Check',
 	    fieldname: 'consider_draft',
-	    default: 0
+	    default: frappe.db.get_single_value("Agriculture Settings", "consider_drafts").then(
+            (value) => {
+                considerDraft.set_value(value);
+            })
 	});
     considerDraft.$wrapper.addClass('col-md-6');
 
@@ -236,6 +239,18 @@ frappe.pages['detailed-report'].on_page_load = function(wrapper) {
         });
     }
     let $btn = page.set_primary_action( __('Get Reports'), () => { get_reports(page.fields_dict) });
-    let sendWhatsappBtn = page.set_secondary_action(__('Send WhatsApp Message'), () => { sendWhatsAppMsg(page.fields_dict) });
-
+    let sendWhatsappBtn = page.set_secondary_action(__('Send WhatsApp Message'), () => {
+        frappe.confirm(
+            __('Are you sure you want to send WhatsApp messages?'),
+            () => {
+                // Yes - proceed
+                sendWhatsAppMsg(page.fields_dict);
+            },
+            () => {
+                // No - do nothing
+                frappe.msgprint(__('Cancelled'));
+            }
+        );
+    });
+    
 }

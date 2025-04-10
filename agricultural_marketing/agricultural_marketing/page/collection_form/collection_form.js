@@ -20,7 +20,10 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
 	    label: __('Consider Drafts'),
 	    fieldtype: 'Check',
 	    fieldname: 'consider_draft',
-	    default: 0
+	    default: frappe.db.get_single_value("Agriculture Settings", "consider_drafts").then(
+            (value) => {
+                considerDraft.set_value(value);
+            })
 	});
     considerDraft.$wrapper.addClass('col-md-3');
 
