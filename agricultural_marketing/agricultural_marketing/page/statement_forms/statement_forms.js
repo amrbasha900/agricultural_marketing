@@ -14,7 +14,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
 	        openingApproach.set_value(value);
 	    })
 	});
-    openingApproach.$wrapper.addClass('col-md-4');
+    openingApproach.$wrapper.addClass('col-md-3');
 
     let considerDraft = page.add_field({
 	    label: __('Consider Drafts'),
@@ -25,7 +25,18 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
                 considerDraft.set_value(value);
             })
 	});
-    considerDraft.$wrapper.addClass('col-md-4');
+    considerDraft.$wrapper.addClass('col-md-2');
+
+    let considerDraftPayments = page.add_field({
+	    label: __('Consider Draft Payments'),
+	    fieldtype: 'Check',
+	    fieldname: 'consider_draft_payments',
+	    default: frappe.db.get_single_value("Agriculture Settings", "consider_draft_payments").then(
+            (value) => {
+                considerDraftPayments.set_value(value);
+            })
+	});
+    considerDraftPayments.$wrapper.addClass('col-md-2');
 
     let neglectItems = page.add_field({
 	    label: __('Neglect Items'),
@@ -33,7 +44,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
 	    fieldname: 'neglect_items',
 	    default: 0
 	});
-    neglectItems.$wrapper.addClass('col-md-4');
+    neglectItems.$wrapper.addClass('col-md-2');
 
     let company = page.add_field({
 	    label: 'Company',
@@ -43,7 +54,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
 	    reqd: 1,
 	    default: frappe.defaults.get_default('company'),
 	});
-    company.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+    company.$wrapper.removeClass('col-md-2').addClass('col-md-3');
 
     let fromDate = page.add_field({
 	    label: 'From Date',
@@ -52,7 +63,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
 	    reqd: 1,
         default: frappe.datetime.get_today()
 	});
-    fromDate.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+    fromDate.$wrapper.removeClass('col-md-2').addClass('col-md-2');
 
     // Bind a manual change event to the input field
     fromDate.$input.on('change', function() {
@@ -69,7 +80,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
 	    fieldname: 'to_date',
 	    default: frappe.datetime.get_today()
 	});
-    toDate.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+    toDate.$wrapper.removeClass('col-md-2').addClass('col-md-2');
 
     // Bind a manual change event to the input field
     toDate.$input.on('change', function() {
@@ -115,7 +126,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
                         fieldtype: 'Link',
                         fieldname: 'party_group'
                     });
-                    partyGroupField.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+                    partyGroupField.$wrapper.removeClass('col-md-2').addClass('col-md-2');
                 }
                 if (!partyField) {
                     partyField = page.add_field({
@@ -124,7 +135,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
                         fieldname: 'party'
                     });
                 }
-                    partyField.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+                    partyField.$wrapper.removeClass('col-md-2').addClass('col-md-3');
                 if (partyGroupField) {
                     partyGroupField.set_value('');
                     partyGroupField.$wrapper.show();
@@ -159,7 +170,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
             }
 	    }
 	});
-    partyTypeField.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+    partyTypeField.$wrapper.removeClass('col-md-2').addClass('col-md-2');
 
     function get_reports(filters) {
         frappe.dom.freeze('Processing...');

@@ -10,6 +10,7 @@ from whatsapp_waapi.waapi import api
 from frappe.query_builder.functions import Sum
 from pypika import Case
 import time
+from pypika.terms import Term
 
 @frappe.whitelist()
 def get_reports(filters):
@@ -129,6 +130,10 @@ def get_payments_details(data, filters):
     payments_query = select_fields_for_payment(filters, payments_query, entry)
 
     result = payments_query.run(as_dict=True)
+
+    if filters.get("consider_draft_payments"):
+        drafts_result = get_payments_details_drafts(filters)
+        result += drafts_result
 
     if result:
         # Construct result, appending to final data nad appending totals
@@ -480,6 +485,11 @@ def get_draft_total_payments(filters, party):
 
     total_paid_amount = sum([re["paid_amount"] for re in result if re["paid_amount"]]) or 0
 
+    ## for drafts of payments from receipts totals 
+    if filters.get("consider_draft_payments"):
+        total_draft_payments = get_draft_total_payments_from_receipts(filters, party)
+        total_paid_amount += total_draft_payments
+
     return total_paid_amount
 
 
@@ -627,3 +637,116 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
 def task_msg_creation(filters):
     frappe.enqueue(method=send_whatsapp_msg, filters=filters, job_name="create pdf and whatsapp for Statement Forms")
     return {"success": f"WhatsApp message logged"}
+
+
+
+
+
+
+
+####### New For Drafts ########
+def get_payments_details_drafts(filters):
+    entry = frappe.qb.DocType("Payments Receipts Reference")
+    parent = frappe.qb.DocType("Payments and Receipts")
+
+    payments_query = (
+        frappe.qb.from_(entry)
+        .join(parent)
+        .on(entry.parent == parent.name)
+        .where(parent.company == filters.get('company'))
+        .where(parent.docstatus == 0) 
+    )
+
+    _filters = {"is_customer": 1} if filters.get("party_type") == "Customer" else {}
+    parties = get_parties(filters, _filters)
+    payments_query = payments_query.where(entry.party.isin(parties))
+
+    payments_query = validate_and_apply_date_filters_drafts(filters, payments_query, parent)
+
+    payments_query = select_fields_for_payment_drafts(filters, payments_query, entry, parent)
+
+    result = payments_query.run(as_dict=True)
+
+    return result
+
+
+def validate_and_apply_date_filters_drafts(filters, query, parent):
+    if filters.get("from_date") and filters.get("to_date") and (filters.get("to_date") < filters.get("from_date")):
+        frappe.throw(_("To date must be after from date"))
+
+    if filters.get("from_date"):
+        query = query.where(parent.posting_date.gte(filters.get("from_date")))
+
+    if filters.get("to_date"):
+        query = query.where(parent.posting_date.lte(filters.get("to_date")))
+
+    return query
+
+
+def select_fields_for_payment_drafts(filters, payments_query, entry, parent):
+    payments_query = payments_query.select(
+        Term.wrap_constant("Payments Receipts Reference").as_("doctype"),
+        entry.party_type,
+        entry.party,
+        parent.name.as_("payment_id"),
+        parent.posting_date.as_("date"),
+        entry.mode_of_payment.as_("mop"),
+        parent.payment_type,
+        entry.description.as_("remarks")
+    )
+
+    if filters.get("party_type") == "Supplier":
+        payments_query = payments_query.select(
+            Case()
+            .when(parent.payment_type == "Pay", entry.amount)
+            .when(parent.payment_type == "Receive", (entry.amount * -1))
+            .else_(entry.amount)
+            .as_("paid_amount")
+        )
+    elif filters.get("party_type") == "Customer":
+        payments_query = payments_query.select(
+            Case()
+            .when(parent.payment_type == "Receive", entry.amount)
+            .when(parent.payment_type == "Pay", (entry.amount * -1))
+            .else_(entry.amount)
+            .as_("paid_amount")
+        )
+
+    return payments_query
+
+def get_draft_total_payments_from_receipts(filters, party):
+    parent = frappe.qb.DocType("Payments and Receipts")
+    reference = frappe.qb.DocType("Payments Receipts Reference")
+
+    query = (
+        frappe.qb.from_(parent)
+        .join(reference).on(reference.parent == parent.name)
+        .where(parent.company == filters.get("company"))
+        .where(parent.posting_date < filters.get("from_date"))
+        .where(parent.docstatus == 0)
+        .where(reference.party == party)
+    )
+
+    if filters.get("party_type") == "Customer":
+        query = query.select(
+            Case()
+            .when(parent.payment_type == "Receive", Sum(reference.amount))
+            .when(parent.payment_type == "Pay", Sum(reference.amount * -1))
+            .else_(Sum(reference.amount))
+            .as_("paid_amount")
+        )
+    elif filters.get("party_type") == "Supplier":
+        query = query.select(
+            Case()
+            .when(parent.payment_type == "Pay", Sum(reference.amount))
+            .when(parent.payment_type == "Receive", Sum(reference.amount * -1))
+            .else_(Sum(reference.amount))
+            .as_("paid_amount")
+        )
+
+    result = query.run(as_dict=True)
+
+    total_paid_amount = sum([re["paid_amount"] for re in result if re["paid_amount"]]) or 0
+
+    
+    return total_paid_amount

@@ -164,6 +164,7 @@ def create_commission_invoices(parties, posting_date, party_type):
                         if line.get("customer") == customer:
                             frappe.db.set_value("Invoice Form Item", line.name, "has_commission_invoice", 1)
         except Exception as e:
+            frappe.log_error(title="Creation Commission Invoice Faild", message=frappe.get_traceback())
             failed_invoices.append({
                 "invoice_id": invoice.get("invoice_id"),
                 "total": invoice.get("total")

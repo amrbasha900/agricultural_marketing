@@ -14,7 +14,7 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
 	        newLayout.set_value(value);
 	    })
 	});
-    newLayout.$wrapper.addClass('col-md-3');
+    newLayout.$wrapper.addClass('col-md-2');
 
 	let considerDraft = page.add_field({
 	    label: __('Consider Drafts'),
@@ -25,7 +25,19 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
                 considerDraft.set_value(value);
             })
 	});
-    considerDraft.$wrapper.addClass('col-md-3');
+    considerDraft.$wrapper.addClass('col-md-2');
+
+    let considerDraftPayments = page.add_field({
+	    label: __('Consider Draft Payments'),
+	    fieldtype: 'Check',
+	    fieldname: 'consider_draft_payments',
+	    default: frappe.db.get_single_value("Agriculture Settings", "consider_draft_payments").then(
+            (value) => {
+                considerDraftPayments.set_value(value);
+            })
+	});
+    considerDraftPayments.$wrapper.addClass('col-md-2');
+
 
     let ignoreZeroTransactions = page.add_field({
 	    label: __('Ignore Zero Transactions'),
@@ -36,7 +48,7 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
 	        ignoreZeroTransactions.set_value(value);
 	    })
 	});
-    ignoreZeroTransactions.$wrapper.addClass('col-md-3');
+    ignoreZeroTransactions.$wrapper.addClass('col-md-2');
 
     let hideDecimal = page.add_field({
 	    label: __('Hide Decimal'),
@@ -47,7 +59,7 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
 	        hideDecimal.set_value(value);
 	    })
 	});
-    hideDecimal.$wrapper.addClass('col-md-3');
+    hideDecimal.$wrapper.addClass('col-md-2');
 
 	let company = page.add_field({
 	    label: 'Company',
