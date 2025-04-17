@@ -138,7 +138,8 @@ def create_commission_invoices(parties, posting_date, party_type):
                         "description": item + "\n" + invoice.get("invoice_id", ""),
                         "qty": 1,
                         "rate": invoice.get("total"),
-                        "invoice_form": invoice.get("invoice_id")
+                        "invoice_form": invoice.get("invoice_id"),
+                        "income_account": frappe.db.get_value("Item", item, "item_defaults.income_account")
                     })
             default_tax_template = get_tax_template(settings)
             commission_invoice.update({
