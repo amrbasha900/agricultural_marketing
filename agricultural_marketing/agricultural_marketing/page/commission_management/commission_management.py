@@ -120,8 +120,8 @@ def create_commission_invoices(parties, posting_date, party_type):
         if party_type == "Supplier" and not customer:
             continue
 
-        item = settings.get("supplier_commission_item") if party_type == "Supplier" else settings.get(
-            "customer_commission_item") or ''
+        item = (settings.get("supplier_commission_item") if party_type == "Supplier" else settings.get(
+            "customer_commission_item")) or ''
         try:
             commission_invoice = frappe.new_doc("Sales Invoice")
             commission_invoice.update({
