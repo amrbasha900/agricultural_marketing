@@ -1,4 +1,5 @@
-
+# Copyright (c) 2024, Muhammad Salama and contributors
+# For license information, please see license.txt
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -7,8 +8,8 @@ from erpnext.accounts.party import get_party_account
 from frappe.utils import now
 import copy
 
-if "settings_manager" in frappe.get_installed_apps():
-    from settings_manager.utils.data import money_in_words
+from settings_manager.utils.data import money_in_words
+
 
 class InvoiceForm(Document):
     settings = frappe.get_single("Agriculture Settings")
@@ -321,8 +322,8 @@ def get_supplier_commission_percentage(supplier):
     Returns the commission percentage for the given `supplier`.
     Will first search in party (Supplier) record, if not found,
     will search in group (Supplier Group),
-    finally will return default.
-    """
+    finally will return default."""
+
     apply_commission = frappe.db.get_value("Supplier", supplier, "apply_commission")
     if not apply_commission:
         return 0

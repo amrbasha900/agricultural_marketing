@@ -648,7 +648,7 @@ def select_fields_for_payment_drafts(filters, payments_query, entry, parent):
         Term.wrap_constant("Payments Receipts Reference").as_("doctype"),
         entry.party_type,
         entry.party,
-        parent.name.as_("payment_id"),
+        entry.name.as_("payment_id"),
         parent.posting_date.as_("date"),
         entry.mode_of_payment.as_("mop"),
         parent.payment_type,

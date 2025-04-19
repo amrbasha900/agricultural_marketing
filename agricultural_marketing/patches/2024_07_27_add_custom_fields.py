@@ -32,6 +32,14 @@ def execute():
                 "insert_after": "email_id",
                 "default": "+966- "
             }
+        ], "Sales Invoice Item": [
+            {
+                "label": _("Invoice Form"),
+                "fieldname": "invoice_form",
+                "fieldtype": "Link",
+                "options": "Invoice Form",
+                "insert_after": "brand"
+            }
         ],
         "Customer": [
             {
@@ -90,5 +98,13 @@ def execute():
                 "allow_in_quick_entry": 1,
                 "insert_after": "stock_uom"
             }
-        ]
+        ],"Sales Invoice": [
+            {
+                "label": _("Is Commission Invoice"),
+                "fieldname": "is_commission_invoice",
+                "fieldtype": "Check",
+                "default": 0,
+                "insert_after": "campaign"
+            }
+        ],
     })

@@ -126,6 +126,10 @@ doc_events = {
     "Supplier": {
         "after_insert": "agricultural_marketing.standard_doctypes.supplier.create_related_customer",
         "on_trash": "agricultural_marketing.standard_doctypes.supplier.delete_related_customer",
+    },
+    "Sales Invoice": {
+        "on_cancel": "agricultural_marketing.standard_doctypes.sales_invoice.update_invoice_form",
+        "on_trash": "agricultural_marketing.standard_doctypes.sales_invoice.update_invoice_form",
     }
 }
 
