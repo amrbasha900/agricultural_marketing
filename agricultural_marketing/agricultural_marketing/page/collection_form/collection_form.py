@@ -119,7 +119,6 @@ def get_items_details(filters):
         for party in parties:
             if party not in parties_with_data:
                 result.append({"party": party})
-
     return result
 
 
@@ -154,8 +153,23 @@ def get_payments_details(filters):
 def get_party_summary(filters, party_type, data):
     def append_summary(doctype, reference_id, date, qty, price, statement, debit, credit):
         nonlocal last_balance
-        if switch_columns:
-            debit, credit = credit, debit
+        
+        # For Invoice Form - swap columns for customer only
+        if doctype == "Invoice Form" and party_type == "Customer":
+            # Swap debit and credit for customers
+            final_debit = flt(credit, 2) or str(credit)
+            final_credit = flt(debit, 2) or str(debit)
+        # For Payment Entry and Payments Receipts Reference, use consistent approach
+        elif doctype in ["Payment Entry", "Payments Receipts Reference"]:
+            # For both customers and suppliers:
+            # - "Receive" payments always go to CREDIT column
+            # - "Pay" payments always go to DEBIT column
+            final_debit = flt(debit, 2) or str(debit)
+            final_credit = flt(credit, 2) or str(credit)
+        else:
+            # For all other cases including supplier invoice forms
+            final_debit = flt(debit, 2) or str(debit)
+            final_credit = flt(credit, 2) or str(credit)
 
         final_data[party].append({
             "doctype": doctype,
@@ -164,8 +178,8 @@ def get_party_summary(filters, party_type, data):
             "qty": cint(qty) if hide_decimal else qty,
             "price": price,
             "statement": statement,
-            "debit": flt(debit, 2) or str(debit),
-            "credit": flt(credit, 2) or str(credit)
+            "debit": final_debit,
+            "credit": final_credit
         })
 
     final_data = {}
@@ -232,50 +246,74 @@ def get_party_summary(filters, party_type, data):
             "debit": flt(debit, 2) or "0",
             "credit": flt(credit, 2) or "0"
         })
+        
         for d in party_data:
             if d.get("doctype") == "Invoice Form":
                 commission_with_taxes = 0
                 if filters.get("party_type") == "Supplier" and d.commission:
                     total_taxes = (d.commission * get_tax_rate()) / 100
                     commission_with_taxes = d.commission + total_taxes
+                    
+                # For suppliers, handle normally
                 append_summary(d.doctype, d.reference_id, d.date, d.qty, d.price, d.item_name, commission_with_taxes,
                                d.total)
-                total_credit += d.total
-                total_debit += commission_with_taxes
-           # elif d.get("doctype")  "Payment Entry": before add drafts
+                
+                # Update totals - don't swap for customers yet, that happens at the end
+                if party_type == "Customer":
+                    # For customers, d.total should go to debit and commission to credit
+                    # But we track it normally here and swap at the end
+                    total_debit += d.total
+                    total_credit += commission_with_taxes
+                else:
+                    # For suppliers, normal flow
+                    total_credit += d.total
+                    total_debit += commission_with_taxes
+                    
             elif d.get("doctype") in ["Payment Entry", "Payments Receipts Reference"]:
                 statement = f"{_(d.mop)} - {d.remarks}" if d.remarks else f"{_(d.mop)}"
+                
+                # Implement the consistent approach for both customer and supplier:
+                # - "Receive" payments always go to CREDIT
+                # - "Pay" payments always go to DEBIT
                 if d.payment_type == "Receive":
-                    append_summary(d.doctype, d.reference_id, d.date, "", "",
-                                   statement, abs(flt(d.paid_amount, 2)), 0)
-                else:
-                    append_summary(d.doctype, d.reference_id, d.date, "", "",
-                                   statement, 0, abs(flt(d.paid_amount, 2)))
-                    
-
-                total_debit += d.paid_amount
+                    append_summary(d.doctype, d.reference_id, d.date, "", "", statement, 0, abs(flt(d.paid_amount, 2)))
+                    total_credit += abs(flt(d.paid_amount, 2))
+                else:  # "Pay"
+                    append_summary(d.doctype, d.reference_id, d.date, "", "", statement, abs(flt(d.paid_amount, 2)), 0)
+                    total_debit += abs(flt(d.paid_amount, 2))
 
         # Calculate and append closing
-        if switch_columns:
-            total_debit, total_credit = total_credit, total_debit
-
         total_debit += debit
         total_credit += credit
 
-        final_data[party].append({
-            "doctype": "",
-            "reference_id": _("Total"),
-            "qty": "",
-            "price": "",
-            "statement": f"<b> {flt(total_debit - total_credit, 2) or '0'} </b>",
-            "debit": f"<b> {flt(total_debit, 2) or '0'} </b>",
-            "credit": f"<b> {flt(total_credit, 2) or '0'} </b>"
-        })
+        # ONLY for customer, swap the display of debit and credit in the totals row
+        if switch_columns:
+            # For customer: swap columns in the totals row only
+            final_data[party].append({
+                "doctype": "",
+                "reference_id": _("Total"),
+                "qty": "",
+                "price": "",
+                "statement": f"<b> {flt(total_debit - total_credit, 2) or '0'} </b>",
+                "debit": f"<b> {flt(total_debit, 2) or '0'} </b>",  # Display credit in debit column 
+                "credit": f"<b> {flt(total_credit, 2) or '0'} </b>"   # Display debit in credit column
+            })
+        else:
+            # For supplier: regular display
+            final_data[party].append({
+                "doctype": "",
+                "reference_id": _("Total"),
+                "qty": "",
+                "price": "",
+                "statement": f"<b> {flt(total_debit - total_credit, 2) or '0'} </b>",
+                "debit": f"<b> {flt(total_debit, 2) or '0'} </b>",
+                "credit": f"<b> {flt(total_credit, 2) or '0'} </b>"
+            })
+        
         if filters.get("ignore_zero_transactions") and (total_debit - total_credit) == 0:
             del final_data[party]
 
     return final_data
-
 
 def get_parties(filters, _filters):
     if filters.get("party"):
@@ -434,7 +472,7 @@ def get_draft_total_payments(filters, party):
     if filters.get("consider_draft_payments"):
         total_draft_payments = get_draft_total_payments_from_receipts(filters, party)
         total_paid_amount += total_draft_payments
-
+    frappe.msgprint(str(total_paid_amount))
     return total_paid_amount
 
 
@@ -515,6 +553,7 @@ def get_draft_total_payments_from_receipts(filters, party):
     parent = frappe.qb.DocType("Payments and Receipts")
     reference = frappe.qb.DocType("Payments Receipts Reference")
 
+    # First, get all relevant records individually without aggregation
     query = (
         frappe.qb.from_(parent)
         .join(reference).on(reference.parent == parent.name)
@@ -522,28 +561,29 @@ def get_draft_total_payments_from_receipts(filters, party):
         .where(parent.posting_date < filters.get("from_date"))
         .where(parent.docstatus == 0)
         .where(reference.party == party)
+        .select(
+            parent.payment_type,
+            reference.amount
+        )
     )
-
-    if filters.get("party_type") == "Customer":
-        query = query.select(
-            Case()
-            .when(parent.payment_type == "Receive", Sum(reference.amount))
-            .when(parent.payment_type == "Pay", Sum(reference.amount * -1))
-            .else_(Sum(reference.amount))
-            .as_("paid_amount")
-        )
-    elif filters.get("party_type") == "Supplier":
-        query = query.select(
-            Case()
-            .when(parent.payment_type == "Pay", Sum(reference.amount))
-            .when(parent.payment_type == "Receive", Sum(reference.amount * -1))
-            .else_(Sum(reference.amount))
-            .as_("paid_amount")
-        )
-
-    result = query.run(as_dict=True)
-
-    total_paid_amount = sum([re["paid_amount"] for re in result if re["paid_amount"]]) or 0
-
     
-    return total_paid_amount
+    results = query.run(as_dict=True)
+    
+    # Process each record individually with the correct payment type logic
+    total_amount = 0
+    for record in results:
+        amount = record.amount
+        
+        # Apply logic based on party type and payment type
+        if filters.get("party_type") == "Customer":
+            if record.payment_type == "Receive":
+                total_amount += amount
+            else:  # "Pay"
+                total_amount -= amount
+        else:  # Supplier
+            if record.payment_type == "Pay":
+                total_amount += amount
+            else:  # "Receive"
+                total_amount -= amount
+    frappe.msgprint(str(total_amount))
+    return total_amount

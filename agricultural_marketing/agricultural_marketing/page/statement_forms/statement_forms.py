@@ -679,6 +679,7 @@ def get_draft_total_payments_from_receipts(filters, party):
     parent = frappe.qb.DocType("Payments and Receipts")
     reference = frappe.qb.DocType("Payments Receipts Reference")
 
+    # First, get all relevant records individually without aggregation
     query = (
         frappe.qb.from_(parent)
         .join(reference).on(reference.parent == parent.name)
@@ -686,27 +687,29 @@ def get_draft_total_payments_from_receipts(filters, party):
         .where(parent.posting_date < filters.get("from_date"))
         .where(parent.docstatus == 0)
         .where(reference.party == party)
+        .select(
+            parent.payment_type,
+            reference.amount
+        )
     )
-
-    if filters.get("party_type") == "Customer":
-        query = query.select(
-            Case()
-            .when(parent.payment_type == "Receive", Sum(reference.amount))
-            .when(parent.payment_type == "Pay", Sum(reference.amount * -1))
-            .else_(Sum(reference.amount))
-            .as_("paid_amount")
-        )
-    elif filters.get("party_type") == "Supplier":
-        query = query.select(
-            Case()
-            .when(parent.payment_type == "Pay", Sum(reference.amount))
-            .when(parent.payment_type == "Receive", Sum(reference.amount * -1))
-            .else_(Sum(reference.amount))
-            .as_("paid_amount")
-        )
-
-    result = query.run(as_dict=True)
-
-    total_paid_amount = sum([re["paid_amount"] for re in result if re["paid_amount"]]) or 0
-
-    return total_paid_amount
+    
+    results = query.run(as_dict=True)
+    
+    # Process each record individually with the correct payment type logic
+    total_amount = 0
+    for record in results:
+        amount = record.amount
+        
+        # Apply logic based on party type and payment type
+        if filters.get("party_type") == "Customer":
+            if record.payment_type == "Receive":
+                total_amount += amount
+            else:  # "Pay"
+                total_amount -= amount
+        else:  # Supplier
+            if record.payment_type == "Pay":
+                total_amount += amount
+            else:  # "Receive"
+                total_amount -= amount
+    frappe.msgprint(str(total_amount))
+    return total_amount

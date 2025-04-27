@@ -154,7 +154,12 @@ def get_party_summary(filters, party_type, party, party_data):
 
     def get_total_payments(data):
         if data.get("payments"):
-            return sum(it.get("paid_amount", 0) for it in data["payments"])
+            return sum(abs(it.get("paid_amount", 0)) for it in data["payments"])
+        return 0
+        
+    def get_total_payments_by_type(data, payment_type):
+        if data.get("payments"):
+            return sum(abs(p.get("paid_amount", 0)) for p in data["payments"] if p.get("payment_type") == payment_type)
         return 0
 
     def append_summary(reference_id, posting_date, statement, debit, credit):
@@ -174,6 +179,7 @@ def get_party_summary(filters, party_type, party, party_data):
     debit, credit, last_balance, balance_from, balance_to = 0, 0, 0, 0, 0
     from_date = filters.get('from_date')
 
+    # Get GL entries for opening balance
     gl_filters = {
         "party_type": filters.get("party_type"),
         "party": party,
@@ -192,11 +198,12 @@ def get_party_summary(filters, party_type, party, party_data):
             AND 
                 is_cancelled = 0
             AND 
-            (posting_date < %(from_date)s OR is_opening = 'Yes')
+                (posting_date < %(from_date)s OR is_opening = 'Yes')
         """
 
     gl_entries = frappe.db.sql(q, gl_filters, as_dict=True)
 
+    # Process GL entries for opening balance
     for gl in gl_entries:
         debit += gl.debit
         credit += gl.credit
@@ -204,93 +211,145 @@ def get_party_summary(filters, party_type, party, party_data):
     # GET total items and payments before from date
     if filters.get("consider_draft"):
         total_items = get_draft_total_items(filters, party) or 0
+        
+        # REVERTING TO ORIGINAL LOGIC: Use the original get_draft_total_payments function
         total_payments = get_draft_total_payments(filters, party) or 0
+        
+        # ORIGINAL LOGIC FOR OPENING BALANCE
         if filters.get("party_type") == "Supplier":
             total_draft_commission = get_draft_total_commission(filters, party) or 0
+            # Original logic for suppliers
             debit += total_payments + total_draft_commission
             credit += total_items
         else:
+            # Original logic for customers
             debit += total_items
             credit += total_payments
-
-    last_balance = debit - credit
-    # Append Opening
-    if abs(debit) > abs(credit):
-        balance_from = debit = abs(last_balance)
-        balance_to = credit = 0
+            
+    # Calculate the net balance
+    net_balance = debit - credit
+    
+    # FIXED: Show opening balance only in the larger column
+    opening_debit, opening_credit = 0, 0
+    if net_balance > 0:
+        opening_debit = abs(net_balance)
     else:
-        balance_from = debit = 0
-        balance_to = credit = abs(last_balance)
+        opening_credit = abs(net_balance)
 
+    # Append Opening with only one column populated
     party_summary.append({
-        "debit": flt(debit, 2) or "0",
-        "credit": flt(credit, 2) or "0",
-        "balance_from": flt(balance_from, 2) or "0",
-        "balance_to": flt(balance_to, 2) or "0",
+        "debit": flt(opening_debit, 2) or "0",
+        "credit": flt(opening_credit, 2) or "0",
+        "balance_from": flt(opening_debit, 2) or "0", 
+        "balance_to": flt(opening_credit, 2) or "0",
         "statement": _("Opening Balance"),
     })
 
+    # Reset running balance to the net opening balance
+    last_balance = opening_debit - opening_credit
+
     for row in party_data.get("items", []):
         append_summary(row.get("invoice_id"), row.get("date"),
-                       f"{cint(row.get('qty'))} * {flt(row.get('price'), 2)} {row.get('item_name')}", 0, flt(row.get("total"), 2))
+                      f"{cint(row.get('qty'))} * {flt(row.get('price'), 2)} {row.get('item_name')}", 0, flt(row.get("total"), 2))
 
+    # Place payments in debit or credit based on both party_type and payment_type
     for row in party_data.get("payments", []):
-        append_summary(row.get("payment_id"), row.get("date"), row.get("remarks"), flt(row.get("paid_amount"), 2), 0)
+        payment_type = row.get("payment_type")
+        paid_amount = abs(flt(row.get("paid_amount"), 2))  # Use absolute value
+        
+        # Determine if amount should go to debit or credit based on party_type and payment_type
+        if party_type == "Customer":
+            # For Customers:
+            # - "Receive" payment → Debit (customer is paying us)
+            # - "Pay" payment → Credit (we are paying the customer)
+            if payment_type == "Receive":
+                debit, credit = paid_amount, 0
+            else:  # "Pay"
+                debit, credit = 0, paid_amount
+        else:  # Supplier
+            # For Suppliers:
+            # - "Pay" payment → Debit (we are paying the supplier)
+            # - "Receive" payment → Credit (supplier is paying us)
+            if payment_type == "Pay":
+                debit, credit = paid_amount, 0
+            else:  # "Receive"
+                debit, credit = 0, paid_amount
+                
+        append_summary(row.get("payment_id"), row.get("date"), row.get("remarks"), debit, credit)
 
     party_summary = sorted(party_summary, key=lambda item: item.get("date", getdate("1000-01-01")))
+    
     # Calculate totals
     total_sales = get_total_sales(party_data)
-    total_payments = get_total_payments(party_data)
-
-    # Calculate and append closing
+    total_payments_receive = get_total_payments_by_type(party_data, "Receive")
+    total_payments_pay = get_total_payments_by_type(party_data, "Pay")
+    
+    # Calculate and append closing based on our new display logic
     if filters.get("party_type") == "Supplier":
         total_commission = sum(it.get("commission", 0) for it in party_data.get("items", []))
         total_taxes = (total_commission * get_tax_rate()) / 100 or 0
         append_summary("", "", _("Commissions"), flt(total_commission, 2), 0)
         append_summary("", "", _("Taxes"), flt(total_taxes, 2), 0)
-        total_debit = total_commission + total_payments + total_taxes
-        total_credit = total_sales
+        
+        # For suppliers:
+        # - "Pay" payments are in debit
+        # - "Receive" payments are in credit
+        total_debit = total_commission + total_taxes + total_payments_pay
+        total_credit = total_sales + total_payments_receive
     else:
-        total_debit = total_payments
-        total_credit = total_sales
+        # For customers:
+        # - "Receive" payments are in debit
+        # - "Pay" payments are in credit
+        total_debit = total_payments_receive
+        total_credit = total_sales + total_payments_pay
 
     if switch_columns:
         total_debit, total_credit = total_credit, total_debit
 
-    total_debit += debit
-    total_credit += credit
+    # Add opening balance to totals
+    total_debit += opening_debit
+    total_credit += opening_credit
 
-    for row in party_summary[1:]:
-        last_balance = update_balance(last_balance, row.get("debit"), row.get("credit"))
+    # Calculate running balance for each row
+    for i, row in enumerate(party_summary):
+        if i == 0:  # Skip opening balance row for recalculation
+            continue
+            
+        current_debit = flt(row.get("debit")) if isinstance(row.get("debit"), (int, float)) else 0
+        current_credit = flt(row.get("credit")) if isinstance(row.get("credit"), (int, float)) else 0
+        
+        last_balance = update_balance(last_balance, current_debit, current_credit)
+        
         if last_balance > 0:
-            balance_from = last_balance
+            balance_from = abs(last_balance)
             balance_to = 0
         else:
             balance_from = 0
-            balance_to = last_balance
+            balance_to = abs(last_balance)
 
         row.update({
-            "balance_from": abs(flt(balance_from, 2)) or str(balance_from),
-            "balance_to": abs(flt(balance_to, 2)) or str(balance_to),
+            "balance_from": flt(balance_from, 2) or "0",
+            "balance_to": flt(balance_to, 2) or "0",
         })
 
-    if abs(total_debit) > abs(total_credit):
-        balance_from = abs(total_debit) - abs(total_credit)
+    # Calculate final balance
+    final_balance = total_debit - total_credit
+    if final_balance > 0:
+        balance_from = abs(final_balance)
         balance_to = 0
     else:
-        balance_to = abs(total_credit) - abs(total_debit)
+        balance_to = abs(final_balance)
         balance_from = 0
 
     party_summary.append({
         "statement": _("Total"),
         "debit": flt(total_debit, 2) or "0",
         "credit": flt(total_credit, 2) or "0",
-        "balance_from": abs(flt(balance_from, 2)) or "0",
-        "balance_to": abs(flt(balance_to, 2)) or "0",
+        "balance_from": flt(balance_from, 2) or "0",
+        "balance_to": flt(balance_to, 2) or "0",
     })
 
     return party_summary
-
 
 def get_html_format():
     template_filename = os.path.join("detailed_report" + '.html')
@@ -718,6 +777,7 @@ def get_draft_total_payments_from_receipts(filters, party):
     parent = frappe.qb.DocType("Payments and Receipts")
     reference = frappe.qb.DocType("Payments Receipts Reference")
 
+    # First, get all relevant records individually without aggregation
     query = (
         frappe.qb.from_(parent)
         .join(reference).on(reference.parent == parent.name)
@@ -725,28 +785,28 @@ def get_draft_total_payments_from_receipts(filters, party):
         .where(parent.posting_date < filters.get("from_date"))
         .where(parent.docstatus == 0)
         .where(reference.party == party)
+        .select(
+            parent.payment_type,
+            reference.amount
+        )
     )
-
-    if filters.get("party_type") == "Customer":
-        query = query.select(
-            Case()
-            .when(parent.payment_type == "Receive", Sum(reference.amount))
-            .when(parent.payment_type == "Pay", Sum(reference.amount * -1))
-            .else_(Sum(reference.amount))
-            .as_("paid_amount")
-        )
-    elif filters.get("party_type") == "Supplier":
-        query = query.select(
-            Case()
-            .when(parent.payment_type == "Pay", Sum(reference.amount))
-            .when(parent.payment_type == "Receive", Sum(reference.amount * -1))
-            .else_(Sum(reference.amount))
-            .as_("paid_amount")
-        )
-
-    result = query.run(as_dict=True)
-
-    total_paid_amount = sum([re["paid_amount"] for re in result if re["paid_amount"]]) or 0
-
     
-    return total_paid_amount
+    results = query.run(as_dict=True)
+    
+    # Process each record individually with the correct payment type logic
+    total_amount = 0
+    for record in results:
+        amount = record.amount
+        
+        # Apply logic based on party type and payment type
+        if filters.get("party_type") == "Customer":
+            if record.payment_type == "Receive":
+                total_amount += amount
+            else:  # "Pay"
+                total_amount -= amount
+        else:  # Supplier
+            if record.payment_type == "Pay":
+                total_amount += amount
+            else:  # "Receive"
+                total_amount -= amount
+    return total_amount

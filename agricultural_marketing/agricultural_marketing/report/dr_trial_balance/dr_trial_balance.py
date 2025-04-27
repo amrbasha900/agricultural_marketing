@@ -12,6 +12,7 @@ def execute(filters=None):
     trial_balance_settings = frappe.get_single("Trial Balance Settings")
     data = get_data(filters, trial_balance_settings)
     data = append_totals_row(data)
+    frappe.msgprint(f"data: {get_draft_payments_data(filters)}")
     return columns, data
 
 
@@ -23,13 +24,13 @@ def get_data(filters, trial_balance_settings):
         "to_date": filters.get("to_date")
     }
 
-    get_child_data_from_gl_entries(gl_filters, trial_balance_settings, "cash_section", result)
+    get_child_data_from_gl_entries(gl_filters, filters, trial_balance_settings, "cash_section", result)
     get_customers_section_data(gl_filters, filters, trial_balance_settings, "customers_section", result)
     get_suppliers_section_data(gl_filters, filters, trial_balance_settings, "suppliers_section", result)
-    get_child_data_from_gl_entries(gl_filters, trial_balance_settings, "share_capital_section", result)
+    get_child_data_from_gl_entries(gl_filters, filters,trial_balance_settings, "share_capital_section", result)
     get_taxes_section_data(gl_filters, filters, trial_balance_settings, "taxes_section", result)
     get_income_section_data(gl_filters, filters, trial_balance_settings, "income_section", result)
-    get_child_data_from_gl_entries(gl_filters, trial_balance_settings, "expense_section", result)
+    get_child_data_from_gl_entries(gl_filters, filters,trial_balance_settings, "expense_section", result)
 
     return result
 
@@ -81,7 +82,7 @@ def get_duration_balances_from_gl(gl_filters):
     return debit, credit
 
 
-def get_child_data_from_gl_entries(gl_filters, trial_balance_settings, child, result):
+def get_child_data_from_gl_entries(gl_filters, filters, trial_balance_settings, child, result):
     section_data = {}
     for row in trial_balance_settings.get(child, []):
         if row.get("is_parent"):
@@ -103,6 +104,22 @@ def get_child_data_from_gl_entries(gl_filters, trial_balance_settings, child, re
             opening_debit, opening_credit = get_opening_balances_from_gl(gl_filters)
             # Get duration debit and credit
             debit, credit = get_duration_balances_from_gl(gl_filters)
+            
+            # Add draft payments if this is a cash section and consider_drafts is enabled
+            if child == "cash_section" and filters.get("consider_drafts") and row.get("mode_of_payment"):
+                # Create a copy of filters and add mode_of_payment
+                payment_filters = filters.copy()
+                payment_filters["mode_of_payment"] = row.get("mode_of_payment")
+                
+                # Call the existing get_draft_payments_data function
+                draft_payments = get_draft_payments_data(payment_filters)
+                
+                # Add the payment values to our totals
+                opening_debit += draft_payments["opening_credit"]
+                opening_credit += draft_payments["opening_debit"]
+                debit += draft_payments["credit"]
+                credit += draft_payments["debit"]
+            
             # Calculate closing balances
             closing_debit, closing_credit = calculate_closing_balance(opening_debit, debit, opening_credit, credit)
 
@@ -188,6 +205,20 @@ def get_customers_section_data(gl_filters, filters, trial_balance_settings, chil
                     draft_opening_debit, draft_duration_debit = get_customers_draft_balance()
                     opening_debit += draft_opening_debit
                     debit += draft_duration_debit
+                    
+                    # Get draft payments - create a copy of filters and add customer_group
+                    payment_filters = filters.copy()
+                    payment_filters["party_type"] = "Customer"
+                    payment_filters["party_group"] = row.get("customer_group")
+                    
+                    # Call the existing get_draft_payments_data function
+                    draft_payments = get_draft_payments_data(payment_filters)
+                    
+                    # Add the payment values to our totals
+                    opening_debit += draft_payments["opening_debit"]
+                    opening_credit += draft_payments["opening_credit"]
+                    debit += draft_payments["debit"]
+                    credit += draft_payments["credit"]
 
             # Calculate closing balances
             closing_debit, closing_credit = calculate_closing_balance(opening_debit, debit, opening_credit, credit)
@@ -299,6 +330,20 @@ def get_suppliers_section_data(gl_filters, filters, trial_balance_settings, chil
                     draft_duration_credit, draft_duration_debit = get_suppliers_draft_duration_balance()
                     credit += draft_duration_credit
                     debit += draft_duration_debit
+                    
+                    # Get draft payments - create a copy of filters and add supplier_group
+                    payment_filters = filters.copy()
+                    payment_filters["party_type"] = "Supplier"
+                    payment_filters["party_group"] = row.get("supplier_group")
+                    
+                    # Call the existing get_draft_payments_data function
+                    draft_payments = get_draft_payments_data(payment_filters)
+                    
+                    # Add the payment values to our totals
+                    opening_debit += draft_payments["opening_debit"]
+                    opening_credit += draft_payments["opening_credit"]
+                    debit += draft_payments["debit"]
+                    credit += draft_payments["credit"]
 
             # Calculate closing balance
             closing_debit, closing_credit = calculate_closing_balance(opening_debit, debit, opening_credit, credit)
@@ -327,7 +372,6 @@ def get_suppliers_section_data(gl_filters, filters, trial_balance_settings, chil
     for section in section_data:
         result.append(section_data[section])
 
-
 def get_taxes_section_data(gl_filters, filters, trial_balance_settings, child, result):
     invfrm = frappe.qb.DocType("Invoice Form")
     invfrmcom = frappe.qb.DocType("Invoice Form Commission")
@@ -336,24 +380,72 @@ def get_taxes_section_data(gl_filters, filters, trial_balance_settings, child, r
         docstatuses.append(0)
 
     def get_taxes_opening_balance():
-        commission = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
-            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")).where(
-            invfrm.company == filters.get("company")).where(
-            invfrm.posting_date.lt(filters.get("from_date"))).where(invfrm.docstatus.isin(docstatuses)).run(
-            as_dict=True)
-
-        total_commission = sum([com["total_commission"] for com in commission])
+        # First get all commissions without filtering by Sales Invoice status
+        commission_data = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
+            invfrm.name, 
+            invfrm.commission_invoice_reference,
+            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")
+        ).where(
+            invfrm.company == filters.get("company")
+        ).where(
+            invfrm.posting_date.lt(filters.get("from_date"))
+        ).where(
+            invfrm.docstatus.isin(docstatuses)
+        ).run(as_dict=True)
+        
+        # Now filter manually to exclude those with approved Sales Invoices
+        total_commission = 0
+        for comm in commission_data:
+            ref = comm.get("commission_invoice_reference")
+            include_record = True
+            
+            if ref:
+                # Check if the Sales Invoice exists and is approved
+                si_exists = frappe.db.exists("Sales Invoice", ref)
+                if si_exists:
+                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    if si_status == 1:  # Approved
+                        include_record = False
+            
+            if include_record:
+                total_commission += comm.get("total_commission") or 0
+        
         opening_credit_from_invoices = (total_commission * get_tax_rate()) / 100
         return 0, opening_credit_from_invoices
 
     def get_taxes_duration_balance():
-        commission = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
-            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")).where(
-            invfrm.company == filters.get("company")).where(
-            invfrm.posting_date.gte(filters.get("from_date"))).where(
-            invfrm.posting_date.lte(filters.get("to_date"))).where(invfrm.docstatus.isin(docstatuses)).run(as_dict=True)
-
-        total_commission = sum([com["total_commission"] for com in commission])
+        # First get all commissions without filtering by Sales Invoice status
+        commission_data = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
+            invfrm.name, 
+            invfrm.commission_invoice_reference,
+            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")
+        ).where(
+            invfrm.company == filters.get("company")
+        ).where(
+            invfrm.posting_date.gte(filters.get("from_date"))
+        ).where(
+            invfrm.posting_date.lte(filters.get("to_date"))
+        ).where(
+            invfrm.docstatus.isin(docstatuses)
+        ).run(as_dict=True)
+        
+        # Now filter manually to exclude those with approved Sales Invoices
+        total_commission = 0
+        for comm in commission_data:
+            ref = comm.get("commission_invoice_reference")
+            include_record = True
+            
+            if ref:
+                # Check if the Sales Invoice exists and is approved
+                si_exists = frappe.db.exists("Sales Invoice", ref)
+                if si_exists:
+                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    if si_status == 1:  # Approved
+                        include_record = False
+            
+            if include_record:
+                total_commission += comm.get("total_commission") or 0
+        
         duration_credit_from_invoices = (total_commission * get_tax_rate()) / 100
         return 0, duration_credit_from_invoices
 
@@ -423,26 +515,75 @@ def get_income_section_data(gl_filters, filters, trial_balance_settings, child, 
         docstatuses.append(0)
 
     def get_income_opening_balance():
-        commission = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
-            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")).where(
-            invfrm.company == filters.get("company")).where(invfrmcom.item == row.commission_item).where(
-            invfrm.posting_date.lt(filters.get("from_date"))).where(invfrm.docstatus.isin(docstatuses)).where(
-            (invfrm.commission_invoice_reference.isnull()) | invfrm.commission_invoice_reference == "").run(
-            as_dict=True)
-
-        total_commission = sum([com["total_commission"] for com in commission])
+        # First get all commissions without filtering by Sales Invoice status
+        commission_data = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
+            invfrm.name, 
+            invfrm.commission_invoice_reference,
+            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")
+        ).where(
+            invfrm.company == filters.get("company")
+        ).where(
+            invfrmcom.item == row.commission_item
+        ).where(
+            invfrm.posting_date.lt(filters.get("from_date"))
+        ).where(
+            invfrm.docstatus.isin(docstatuses)
+        ).run(as_dict=True)
+        
+        # Filter to exclude those with approved Sales Invoices
+        total_commission = 0
+        for comm in commission_data:
+            ref = comm.get("commission_invoice_reference")
+            include_record = True
+            
+            if ref:
+                # Check if the Sales Invoice exists and is approved
+                si_exists = frappe.db.exists("Sales Invoice", ref)
+                if si_exists:
+                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    if si_status == 1:  # Approved
+                        include_record = False
+            
+            if include_record:
+                total_commission += comm.get("total_commission") or 0
+        
         return 0, total_commission
 
     def get_income_duration_balance():
-        commission = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
-            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")).where(
-            invfrm.company == filters.get("company")).where(invfrmcom.item == row.commission_item).where(
-            invfrm.posting_date.gte(filters.get("from_date"))).where(
-            invfrm.posting_date.lte(filters.get("to_date"))).where(invfrm.docstatus.isin(docstatuses)).where(
-            (invfrm.commission_invoice_reference.isnull()) | invfrm.commission_invoice_reference == "").run(
-            as_dict=True)
-
-        total_commission = sum([com["total_commission"] for com in commission])
+        # First get all commissions without filtering by Sales Invoice status
+        commission_data = frappe.qb.from_(invfrm).join(invfrmcom).on(invfrmcom.parent == invfrm.name).select(
+            invfrm.name, 
+            invfrm.commission_invoice_reference,
+            ((invfrmcom.price * invfrmcom.commission) / 100).as_("total_commission")
+        ).where(
+            invfrm.company == filters.get("company")
+        ).where(
+            invfrmcom.item == row.commission_item
+        ).where(
+            invfrm.posting_date.gte(filters.get("from_date"))
+        ).where(
+            invfrm.posting_date.lte(filters.get("to_date"))
+        ).where(
+            invfrm.docstatus.isin(docstatuses)
+        ).run(as_dict=True)
+        
+        # Filter to exclude those with approved Sales Invoices
+        total_commission = 0
+        for comm in commission_data:
+            ref = comm.get("commission_invoice_reference")
+            include_record = True
+            
+            if ref:
+                # Check if the Sales Invoice exists and is approved
+                si_exists = frappe.db.exists("Sales Invoice", ref)
+                if si_exists:
+                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    if si_status == 1:  # Approved
+                        include_record = False
+            
+            if include_record:
+                total_commission += comm.get("total_commission") or 0
+        
         return 0, total_commission
 
     section_data = {}
@@ -610,3 +751,133 @@ def append_totals_row(data):
     data.append(totals)
 
     return data
+
+
+
+
+####b Adding new Drafts Payments 
+def get_draft_payments_data(filters):
+    # If consider_drafts is not enabled, return zeros
+    if not filters.get("consider_drafts"):
+        
+        return {
+            "opening_debit": 0,
+            "opening_credit": 0,
+            "debit": 0,
+            "credit": 0,
+            "closing_debit": 0,
+            "closing_credit": 0
+        }
+    
+    # Define DocTypes for QueryBuilder
+    payments = frappe.qb.DocType("Payments and Receipts")
+    references = frappe.qb.DocType("Payments Receipts Reference")
+    
+    # Only consider draft (docstatus = 0) documents
+    docstatuses = [0]
+    
+    def get_filtered_payment_data(before_date=False):
+        # Base query with party and mode_of_payment info
+        query = (
+            frappe.qb.from_(payments)
+            .join(references).on(references.parent == payments.name)
+            .select(
+                payments.payment_type,
+                references.party_type,
+                references.party,
+                references.mode_of_payment,
+                references.amount
+            )
+            .where(payments.company == filters.get("company"))
+            .where(references.docstatus.isin(docstatuses))
+        )
+        
+        # Add date filter
+        if before_date:
+            query = query.where(payments.posting_date.lt(filters.get("from_date")))
+        else:
+            query = query.where(payments.posting_date.gte(filters.get("from_date")))
+            query = query.where(payments.posting_date.lte(filters.get("to_date")))
+        
+        # Apply party_type filter if provided
+        if filters.get("party_type"):
+            query = query.where(payments.party_type == filters.get("party_type"))
+        
+        # Apply mode_of_payment filter if provided
+        if filters.get("mode_of_payment"):
+            query = query.where(payments.mode_of_payment == filters.get("mode_of_payment"))
+        
+        # Execute query
+        payment_data = query.run(as_dict=True)
+
+        # Post-process to get party group
+        result = []
+        for payment in payment_data:
+            # Get the party group based on party_type
+            party_group = None
+            if payment.party_type == "Supplier":
+                party_group = frappe.db.get_value("Supplier", payment.party, "supplier_group")
+            elif payment.party_type == "Customer":
+                party_group = frappe.db.get_value("Customer", payment.party, "customer_group")
+            
+            # Apply party group filter if provided
+            if filters.get("party_group") and party_group != filters.get("party_group"):
+                continue
+            
+            # Add party_group to the payment data
+            payment["party_group"] = party_group
+            result.append(payment)
+        return result
+    
+    def get_payments_opening_balance():
+        payment_data = get_filtered_payment_data(before_date=True)
+        
+        opening_debit = 0
+        opening_credit = 0
+        
+        # Process results
+        for payment in payment_data:
+            if payment["payment_type"] == 'Pay':
+                opening_debit += payment["amount"] or 0
+            elif payment["payment_type"] == 'Receive':
+                opening_credit += payment["amount"] or 0
+        return opening_debit, opening_credit
+    
+    def get_payments_duration_balance():
+        payment_data = get_filtered_payment_data(before_date=False)
+        
+        period_debit = 0
+        period_credit = 0
+        
+        # Process results
+        for payment in payment_data:
+            if payment["payment_type"] == 'Pay':
+                period_debit += payment["amount"] or 0
+            elif payment["payment_type"] == 'Receive':
+                period_credit += payment["amount"] or 0
+        return period_debit, period_credit
+    
+    # Get the values
+    opening_debit, opening_credit = get_payments_opening_balance()
+    period_debit, period_credit = get_payments_duration_balance()
+    
+    # Calculate closing balance
+    total_debit = opening_debit + period_debit
+    total_credit = opening_credit + period_credit
+    closing_debit = 0
+    closing_credit = 0
+    
+    if total_debit > total_credit:
+        closing_debit = abs(total_debit - total_credit)
+    else:
+        closing_credit = abs(total_credit - total_debit)
+    
+    # Return all values
+    return {
+        "opening_debit": opening_debit,
+        "opening_credit": opening_credit,
+        "debit": period_debit,
+        "credit": period_credit,
+        "closing_debit": closing_debit,
+        "closing_credit": closing_credit
+    }
