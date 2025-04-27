@@ -711,5 +711,4 @@ def get_draft_total_payments_from_receipts(filters, party):
                 total_amount += amount
             else:  # "Receive"
                 total_amount -= amount
-    frappe.msgprint(str(total_amount))
     return total_amount

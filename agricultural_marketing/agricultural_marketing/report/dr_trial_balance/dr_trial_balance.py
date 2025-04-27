@@ -12,7 +12,6 @@ def execute(filters=None):
     trial_balance_settings = frappe.get_single("Trial Balance Settings")
     data = get_data(filters, trial_balance_settings)
     data = append_totals_row(data)
-    frappe.msgprint(f"data: {get_draft_payments_data(filters)}")
     return columns, data
 
 
