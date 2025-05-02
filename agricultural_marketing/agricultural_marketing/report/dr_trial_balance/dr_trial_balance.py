@@ -395,14 +395,14 @@ def get_taxes_section_data(gl_filters, filters, trial_balance_settings, child, r
         # Now filter manually to exclude those with approved Sales Invoices
         total_commission = 0
         for comm in commission_data:
-            ref = comm.get("commission_invoice_reference")
+            ref = comm.get("name")
             include_record = True
             
             if ref:
                 # Check if the Sales Invoice exists and is approved
-                si_exists = frappe.db.exists("Sales Invoice", ref)
+                si_exists = frappe.db.exists("Sales Invoice Item", {"invoice_form": ref})
                 if si_exists:
-                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    si_status = frappe.db.get_value("Sales Invoice Item", {'invoice_form':ref}, "docstatus")
                     if si_status == 1:  # Approved
                         include_record = False
             
@@ -431,14 +431,14 @@ def get_taxes_section_data(gl_filters, filters, trial_balance_settings, child, r
         # Now filter manually to exclude those with approved Sales Invoices
         total_commission = 0
         for comm in commission_data:
-            ref = comm.get("commission_invoice_reference")
+            ref = comm.get("name")
             include_record = True
             
             if ref:
                 # Check if the Sales Invoice exists and is approved
-                si_exists = frappe.db.exists("Sales Invoice", ref)
+                si_exists = frappe.db.exists("Sales Invoice Item", {"invoice_form": ref})
                 if si_exists:
-                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    si_status = frappe.db.get_value("Sales Invoice Item", {'invoice_form':ref}, "docstatus")
                     if si_status == 1:  # Approved
                         include_record = False
             
@@ -532,14 +532,14 @@ def get_income_section_data(gl_filters, filters, trial_balance_settings, child, 
         # Filter to exclude those with approved Sales Invoices
         total_commission = 0
         for comm in commission_data:
-            ref = comm.get("commission_invoice_reference")
+            ref = comm.get("name")
             include_record = True
             
             if ref:
                 # Check if the Sales Invoice exists and is approved
-                si_exists = frappe.db.exists("Sales Invoice", ref)
+                si_exists = frappe.db.exists("Sales Invoice Item", {"invoice_form": ref})
                 if si_exists:
-                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    si_status = frappe.db.get_value("Sales Invoice Item", {'invoice_form':ref}, "docstatus")
                     if si_status == 1:  # Approved
                         include_record = False
             
@@ -569,20 +569,21 @@ def get_income_section_data(gl_filters, filters, trial_balance_settings, child, 
         # Filter to exclude those with approved Sales Invoices
         total_commission = 0
         for comm in commission_data:
-            ref = comm.get("commission_invoice_reference")
+            ref = comm.get("name")
             include_record = True
             
             if ref:
                 # Check if the Sales Invoice exists and is approved
-                si_exists = frappe.db.exists("Sales Invoice", ref)
+                si_exists = frappe.db.exists("Sales Invoice Item", {"invoice_form": ref})
+
                 if si_exists:
-                    si_status = frappe.db.get_value("Sales Invoice", ref, "docstatus")
+                    si_status = frappe.db.get_value("Sales Invoice Item", {'invoice_form':ref}, "docstatus")
                     if si_status == 1:  # Approved
                         include_record = False
             
             if include_record:
                 total_commission += comm.get("total_commission") or 0
-        
+        frappe.msgprint(f"Total Commission Income: {total_commission}")
         return 0, total_commission
 
     section_data = {}
@@ -604,6 +605,7 @@ def get_income_section_data(gl_filters, filters, trial_balance_settings, child, 
             })
             # Get opening
             opening_debit, opening_credit = get_opening_balances_from_gl(gl_filters)
+            frappe.msgprint(f"Opening Debit: {opening_debit}{opening_credit}")
             # Get duration debit and credit
             debit, credit = get_duration_balances_from_gl(gl_filters)
 
