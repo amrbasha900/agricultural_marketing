@@ -545,7 +545,7 @@ def get_income_section_data(gl_filters, filters, trial_balance_settings, child, 
             
             if include_record:
                 total_commission += comm.get("total_commission") or 0
-        
+        frappe.msgprint(f"Total Commission Income openeing: {total_commission}")
         return 0, total_commission
 
     def get_income_duration_balance():
@@ -605,9 +605,10 @@ def get_income_section_data(gl_filters, filters, trial_balance_settings, child, 
             })
             # Get opening
             opening_debit, opening_credit = get_opening_balances_from_gl(gl_filters)
-            frappe.msgprint(f"Opening Debit: {opening_debit}{opening_credit}")
+            frappe.msgprint(f"Opening Debit GL: {opening_debit}{opening_credit}")
             # Get duration debit and credit
             debit, credit = get_duration_balances_from_gl(gl_filters)
+            frappe.msgprint(f" Debit GL: {debit}{credit}")
 
             if row.get("commission_item"):
                 invoices_opening_debit, invoices_opening_credit = get_income_opening_balance()
