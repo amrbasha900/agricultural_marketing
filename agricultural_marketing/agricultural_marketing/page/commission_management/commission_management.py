@@ -21,17 +21,43 @@ def get_invoices(filters):
 
     inv_form = frappe.qb.DocType("Invoice Form")
     inv_frmitem = frappe.qb.DocType("Invoice Form Item")
+    inv_frm_comm = frappe.qb.DocType("Invoice Form Commission")
     if party_type == "Supplier":
-        query = frappe.qb.from_(inv_form).select(
-            inv_form.name.as_("invoice_id"), inv_form.supplier, inv_form.has_supplier_commission_invoice,
-            inv_form.grand_total).where(inv_form.has_supplier_commission_invoice == 0).where(inv_form.docstatus == 1)
-
+        commission_subquery = (
+        frappe.qb.from_(inv_frm_comm)
+        .select(
+            inv_frm_comm.parent,
+            inv_frm_comm.commission
+        )
+        .where(inv_frm_comm.parenttype == "Invoice Form")
+    )
+        query = (
+        frappe.qb.from_(inv_form)
+        .left_join(inv_frm_comm)
+        .on(inv_frm_comm.parent == inv_form.name)
+        .select(
+            inv_form.name.as_("invoice_id"), 
+            inv_form.supplier, 
+            inv_form.has_supplier_commission_invoice,
+            inv_form.grand_total,
+            inv_frm_comm.commission,
+            inv_form.total_commissions_and_taxes
+        )
+        .where(inv_form.has_supplier_commission_invoice == 0)
+        .where(inv_form.docstatus == 1)
+        .where(inv_frm_comm.parenttype == "Invoice Form")
+        .orderby(inv_form.name)
+        .orderby(inv_frm_comm.idx)  # To ensure we get the first record when there are multiple
+    )
         if party:
             query = query.where(inv_form.supplier == party)
 
         prev_invoices = query.where(inv_form.posting_date.lt(from_date)).run(as_dict=True)
-
-        if prev_invoices:
+        prev_invoices_with_commission = [
+            inv for inv in prev_invoices 
+            if inv.get("total_commissions_and_taxes", 0) > 0
+        ]
+        if prev_invoices_with_commission:
             return {
                 "data": {},
                 "success": False,
@@ -42,7 +68,8 @@ def get_invoices(filters):
         if invoices:
             for invoice in invoices:
                 current_supplier = invoice["supplier"]
-                supplier_commission = get_supplier_commission_percentage(current_supplier)
+                ##supplier_commission = get_supplier_commission_percentage(current_supplier)
+                supplier_commission = invoice.get("commission", 0)
                 invoice["total"] = (supplier_commission * invoice["grand_total"]) / 100
                 if current_supplier in parties:
                     data[current_supplier].append(invoice)
