@@ -1,0 +1,96 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="pdfkit-page-size" content="A4">
+    <meta name="pdfkit-orientation" content="Portrait">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Lateef:wght@200;300;400;500;600;700;800&family=Scheherazade+New:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@100..900&family=Cairo:wght@200..1000&display=swap"
+        rel="stylesheet">
+
+<style>
+    .print-format {
+        direction: rtl;
+        margin-left: 5mm;
+        margin-right: 5mm;
+        font-family: Cairo, sans-serif;
+
+    }
+
+    .print-format td {
+        vertical-align: middle !important;
+    }
+</style>
+</head>
+<h1 class="text-center" style="margin-top:0">إحصائية مبيعات الدلالين</h1>
+<h4 class="text-center" style="margin-top:0;font-weight: 600 !important;">من تاريخ : {%= filters.from_date %}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; الي تاريخ {%= filters.to_date %}</h4>
+<table class="table table-bordered" style="text-align: center;">
+	<thead>
+		<tr>
+			<th style="font-size: 14px;font-weight: 700;text-align: center;">اسم الحساب</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">عدد الفواتير</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">عدد المزارع</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">اجمالي الفواتير</th>
+            {% if(filters.show_commission) { %}
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">اجمالي العمولة</th>
+            {% } %}
+            {% if(filters.show_tax) { %}
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">اجمالي الضريبة</th>
+            {% } %}
+            {% if(filters.total_commissions_and_taxes) { %}
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">اجمالي العمولة والضريبة</th>
+            {% } %}
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">ملاحظات</th>
+		</tr>
+	</thead>
+	<tbody>
+        {% var invoice_count = 0;
+            var supplier_count = 0;
+            var grand_total = 0;
+            var commission = 0;
+            var tax = 0;
+            var total_commissions_and_taxes = 0;
+        %}
+        {% for(var i=0, l=data.length; i<l; i++) { %}
+        <tr>
+        <td>{%= data[i]["pamper_name"] %}</td>
+        <td>{%= data[i]["invoice_count"] %}</td>
+        <td>{%= data[i]["supplier_count"] %}</td>
+        <td>{%= format_currency(data[i]["grand_total"]) %}</td>
+        {% if(filters.show_commission) { %}
+         <td>{%= format_currency(data[i]["commission"]) %}</td>            
+        {% } %}
+            {% if(filters.show_tax) { %}
+            <td>{%= format_currency(data[i]["tax"]) %}</td>
+            {% } %}
+            {% if(filters.total_commissions_and_taxes) { %}
+            <td>{%= format_currency(data[i]["total_commissions_and_taxes"]) %}</td>
+            {%  invoice_count = invoice_count + data[i]["invoice_count"] %}
+            {%  supplier_count = supplier_count + data[i]["supplier_count"] %}
+            {%  grand_total = grand_total + data[i]["grand_total"] %}
+            {%  commission = commission + data[i]["commission"] %}
+            {%  tax = tax + data[i]["tax"] %}
+            {%  total_commissions_and_taxes = total_commissions_and_taxes + data[i]["total_commissions_and_taxes"] %}
+            {% } %}
+        <td></td>
+    </tr>
+        {% } %}
+        <tr>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">إجماليات</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= invoice_count %}</td>
+        <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= supplier_count %}</td>
+        <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(grand_total) %}</td>
+        {% if(filters.show_commission) { %}
+         <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(commission) %}</td>            
+        {% } %}
+            {% if(filters.show_tax) { %}
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(tax) %}</td>
+            {% } %}
+            {% if(filters.total_commissions_and_taxes) { %}
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_commissions_and_taxes) %}</td>
+            {% } %}
+        <td></td>
+        </tr>
+	</tbody>
+</table>
