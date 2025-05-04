@@ -9,6 +9,7 @@
   "calculate_opening_balance_with_totals",
   "consider_drafts",
   "consider_draft_payments",
+  "consider_draft_pamper_sales_statistics",
   "new_report_layout",
   "ignore_zero_transactions",
   "hide_decimal",
@@ -102,12 +103,19 @@
    "fieldname": "consider_draft_payments",
    "fieldtype": "Check",
    "label": "Consider Draft Payments"
+  },
+  {
+   "default": "0",
+   "fieldname": "consider_draft_pamper_sales_statistics",
+   "fieldtype": "Check",
+   "label": "Consider Draft Pamper Sales Statistics"
   }
  ],
+ "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-04-17 01:43:26.342177",
+ "modified": "2025-05-04 20:22:22.204620",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",

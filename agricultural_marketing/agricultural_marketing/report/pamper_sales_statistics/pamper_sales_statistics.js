@@ -2,7 +2,7 @@
 // For license information, please see license.txt
 
 frappe.query_reports["Pamper Sales Statistics"] = {
-	"filters": [
+    "filters": [
         {
             "fieldname": "company",
             "label": __("Company"),
@@ -25,18 +25,18 @@ frappe.query_reports["Pamper Sales Statistics"] = {
             "default": frappe.datetime.get_today(),
             "reqd": 1
         },
-		{
+        {
             "fieldname": "pamper",
             "label": __("Pamper"),
             "fieldtype": "Link",
-			"options": "Customer",
-			get_query: () => {
-				return {
-					filters: {
-						is_pamper: 1,
-					},
-				};
-			}
+            "options": "Customer",
+            get_query: () => {
+                return {
+                    filters: {
+                        is_pamper: 1,
+                    },
+                };
+            }
         },
         {
             "fieldname": "is_draft",
@@ -44,12 +44,12 @@ frappe.query_reports["Pamper Sales Statistics"] = {
             "fieldtype": "Check",
             "default": 0
         },
-        
+
         {
             "fieldname": "show_commission",
             "label": __("Show Commission"),
             "fieldtype": "Check",
-            "default": 0
+            "default": 1
         },
         {
             "fieldname": "show_tax",
@@ -57,28 +57,35 @@ frappe.query_reports["Pamper Sales Statistics"] = {
             "fieldtype": "Check",
             "default": 0
         },
-		{
+        {
             "fieldname": "total_commissions_and_taxes",
             "label": __("Show Total Tax and Commission"),
             "fieldtype": "Check",
             "default": 0
         }
     ],
-    
-    "formatter": function(value, row, column, data, default_formatter) {
+
+    "formatter": function (value, row, column, data, default_formatter) {
         value = default_formatter(value, row, column, data);
-        
+
         // Add any custom formatting logic here if needed
         // For example, you can highlight rows based on certain conditions
-        
+
         return value;
     },
-    
-    "onload": function(report) {
+
+    "onload": function (report) {
         // Add any initialization logic here
-        
+        frappe.db.get_single_value('Agriculture Settings', 'consider_draft_pamper_sales_statistics')
+        .then(value => {
+            // Update the filter value
+            report.get_filter('is_draft').set_value(value);
+        })
+        .catch(err => {
+            console.error("Error fetching consider_draft_pamper_sales_statistics:", err);
+        });
         // Update view when checkboxes for commission or tax are toggled
-        report.page.add_inner_button(__("Refresh Columns"), function() {
+        report.page.add_inner_button(__("Refresh Columns"), function () {
             // This will refresh the report with updated filters
             frappe.query_report.refresh();
         });

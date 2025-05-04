@@ -66,13 +66,14 @@
             {% } %}
             {% if(filters.total_commissions_and_taxes) { %}
             <td>{%= format_currency(data[i]["total_commissions_and_taxes"]) %}</td>
+            
+            {% } %}
             {%  invoice_count = invoice_count + data[i]["invoice_count"] %}
             {%  supplier_count = supplier_count + data[i]["supplier_count"] %}
             {%  grand_total = grand_total + data[i]["grand_total"] %}
             {%  commission = commission + data[i]["commission"] %}
             {%  tax = tax + data[i]["tax"] %}
             {%  total_commissions_and_taxes = total_commissions_and_taxes + data[i]["total_commissions_and_taxes"] %}
-            {% } %}
         <td></td>
     </tr>
         {% } %}
