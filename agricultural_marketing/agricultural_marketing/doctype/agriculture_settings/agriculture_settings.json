@@ -19,7 +19,8 @@
   "commission_item",
   "pos_profile",
   "default_tax",
-  "font_size"
+  "font_size",
+  "report_note"
  ],
  "fields": [
   {
@@ -109,13 +110,18 @@
    "fieldname": "consider_draft_pamper_sales_statistics",
    "fieldtype": "Check",
    "label": "Consider Draft Pamper Sales Statistics"
+  },
+  {
+   "fieldname": "report_note",
+   "fieldtype": "Small Text",
+   "label": "Report Note"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-05-04 20:22:22.204620",
+ "modified": "2025-05-06 01:18:38.174738",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",
