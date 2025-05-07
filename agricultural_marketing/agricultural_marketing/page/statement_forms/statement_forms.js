@@ -264,7 +264,7 @@ frappe.pages['statement-forms'].on_page_load = function(wrapper) {
     let $btn = page.set_primary_action( __('Download Reports'), () => { get_reports(page.fields_dict) });
     let sendWhatsappBtn = page.set_secondary_action(__('Send WhatsApp Message'), () => {
         frappe.confirm(
-            __('Are you sure you want to send WhatsApp messages?'),
+            __('Are you sure you want to send WhatsApp messages and Lock Invoices From Updates?'),
             () => {
                 // Yes - proceed
                 sendWhatsAppMsg(page.fields_dict);

@@ -598,8 +598,23 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
 @frappe.whitelist()
 def task_msg_creation(filters):
     frappe.enqueue(method=send_whatsapp_msg, filters=filters, job_name="create pdf and whatsapp for Statement Forms")
+    lock_invoice_update()
     return {"success": f"WhatsApp message logged"}
 
+
+
+@frappe.whitelist()
+def lock_invoice_update():
+    invoices = frappe.db.get_all("Invoice Form", {"lock_update": 0}, "name")
+    if invoices:
+        for invoice in invoices:
+            frappe.db.set_value("Invoice Form", invoice.name, "lock_update", 1)
+        frappe.msgprint(_(f"{len(invoices)} Invoice Form locked for update"))
+    else:
+        frappe.msgprint(_("No Invoice Form to lock for update"))
+        
+    frappe.db.commit()
+    return {"success": f"Invoice Form locked for update"}
 
 
 
