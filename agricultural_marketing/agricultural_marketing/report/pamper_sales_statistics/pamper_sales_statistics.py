@@ -8,7 +8,7 @@ def execute(filters=None):
     # Check for mandatory filters
     if not filters:
         filters = {}
-    
+    filters["pamper_commission"] = frappe.db.get_single_value("Agriculture Settings", "active_pamper_commission")
     if not filters.get("company"):
         # Set default company if not provided
         filters["company"] = frappe.db.get_default("company")
@@ -19,9 +19,10 @@ def execute(filters=None):
     
     if not filters.get("from_date") or not filters.get("to_date"):
         frappe.throw(_("From Date and To Date are mandatory"))
-        
+    frappe.errprint(filters)
     columns = get_columns(filters)
     data = get_data(filters)
+    frappe.errprint(data)
     return columns, data
 
 def get_columns(filters):
@@ -35,6 +36,8 @@ def get_columns(filters):
     # Add conditional columns based on filters
     if filters.get("show_commission"):
         columns.append({"label": _("Commission"), "fieldname": "commission", "fieldtype": "Currency", "width": 120})
+        if frappe.db.get_single_value("Agriculture Settings", "active_pamper_commission"):
+            columns.append({"label": _("Pamper Commission"), "fieldname": "pamper_commission", "fieldtype": "Currency", "width": 150})
     
     if filters.get("show_tax"):
         columns.append({"label": _("Tax"), "fieldname": "tax", "fieldtype": "Currency", "width": 120})
@@ -79,7 +82,8 @@ def get_data(filters):
                 name,
                 supplier,
                 grand_total,
-                total_commissions_and_taxes
+                total_commissions_and_taxes,
+                pamper_commission
             FROM 
                 `tabInvoice Form`
             WHERE 1 = 1 AND {conditions}
@@ -97,7 +101,8 @@ def get_data(filters):
         # Calculate grand total
         grand_total = sum(invoice.grand_total or 0 for invoice in invoices)
         total_commissions_and_taxes = sum(invoice.total_commissions_and_taxes or 0 for invoice in invoices)
-        
+        if frappe.db.get_single_value("Agriculture Settings", "active_pamper_commission"):
+            total_pamper_commission = sum(invoice.pamper_commission or 0 for invoice in invoices)
         commission_total = 0
         tax_total = 0
         
@@ -137,6 +142,8 @@ def get_data(filters):
         
         if filters.get("show_commission"):
             row["commission"] = commission_total
+            if frappe.db.get_single_value("Agriculture Settings", "active_pamper_commission"):
+                row["pamper_commission"] = total_pamper_commission
             
         if filters.get("show_tax"):
             row["tax"] = tax_total

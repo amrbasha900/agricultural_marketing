@@ -44,12 +44,18 @@ frappe.query_reports["Pamper Sales Statistics"] = {
             "fieldtype": "Check",
             "default": 0
         },
-
         {
             "fieldname": "show_commission",
             "label": __("Show Commission"),
             "fieldtype": "Check",
             "default": 1
+        },
+        {
+            "fieldname": "pamper_commission",
+            "label": __("Pamper Commission"),
+            "fieldtype": "Check",
+            "default": 0,
+            "read_only":1
         },
         {
             "fieldname": "show_tax",
@@ -64,6 +70,7 @@ frappe.query_reports["Pamper Sales Statistics"] = {
             "default": 0
         }
     ],
+    
 
     "formatter": function (value, row, column, data, default_formatter) {
         value = default_formatter(value, row, column, data);
@@ -75,6 +82,10 @@ frappe.query_reports["Pamper Sales Statistics"] = {
     },
 
     "onload": function (report) {
+        frappe.db.get_single_value("Agriculture Settings", "active_pamper_commission")
+            .then(value => {
+                report.get_filter('pamper_commission').set_value(value);
+            });
         // Add any initialization logic here
         frappe.db.get_single_value('Agriculture Settings', 'consider_draft_pamper_sales_statistics')
         .then(value => {

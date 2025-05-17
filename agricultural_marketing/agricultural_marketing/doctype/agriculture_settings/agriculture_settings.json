@@ -20,7 +20,13 @@
   "pos_profile",
   "default_tax",
   "font_size",
-  "report_note"
+  "report_note",
+  "pamper_section",
+  "active_pamper_commission",
+  "pamper_commission",
+  "column_break_dtcr",
+  "automatic_pamper_commission_creation",
+  "pamper_commission_account"
  ],
  "fields": [
   {
@@ -115,13 +121,53 @@
    "fieldname": "report_note",
    "fieldtype": "Small Text",
    "label": "Report Note"
+  },
+  {
+   "fieldname": "pamper_section",
+   "fieldtype": "Section Break",
+   "label": "Pamper"
+  },
+  {
+   "default": "0",
+   "fieldname": "active_pamper_commission",
+   "fieldtype": "Check",
+   "label": "Active Pamper Commission"
+  },
+  {
+   "fieldname": "column_break_dtcr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.active_pamper_commission",
+   "fieldname": "pamper_commission",
+   "fieldtype": "Float",
+   "label": "Pamper Commission",
+   "mandatory_depends_on": "eval:doc.active_pamper_commission",
+   "non_negative": 1,
+   "precision": "2"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.active_pamper_commission",
+   "fieldname": "automatic_pamper_commission_creation",
+   "fieldtype": "Check",
+   "label": "Automatic Pamper Commission Creation"
+  },
+  {
+   "depends_on": "eval:doc.automatic_pamper_commission_creation",
+   "fieldname": "pamper_commission_account",
+   "fieldtype": "Link",
+   "label": "Pamper Commission Account",
+   "mandatory_depends_on": "eval:doc.automatic_pamper_commission_creation",
+   "options": "Account"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-05-06 01:18:38.174738",
+ "modified": "2025-05-16 16:16:53.980058",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",

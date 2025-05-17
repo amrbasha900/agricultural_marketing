@@ -20,6 +20,7 @@ class InvoiceForm(Document):
         self.update_grand_total()
         self.update_customer_commission()
         self.update_commission_and_taxes()
+        self.add_pamper_commission()
 
     def on_submit(self):
         self.make_gl_entries()
@@ -82,6 +83,8 @@ class InvoiceForm(Document):
 
         # For debits entries
         self.make_customers_gl_entries(gl_entries, company_defaults)
+        if self.settings.get("active_pamper_commission", 0) and self.settings.get("automatic_pamper_commission_creation", 0) and  self.pamper:
+            self.make_gl_dict_for_pamper_commission(gl_entries, company_defaults)
 
         for entry in gl_entries:
             gle = frappe.new_doc("GL Entry")
@@ -123,7 +126,7 @@ class InvoiceForm(Document):
                 gl_entries.append({
                     "posting_date": self.posting_date,
                     "due_date": self.posting_date,
-                    "account": company_defaults.default_receivable_account,
+                    "account": get_party_account("Customer", it.customer, self.company),
                     "party_type": "Customer",
                     "party": it.customer,
                     "debit": it.total,
@@ -303,6 +306,55 @@ class InvoiceForm(Document):
                 item.customer_commission = (item.total * customer_doc.commission) / 100
             elif customer_doc.commission_type and customer_doc.commission_type.lower() == "amount":
                 item.customer_commission = (item.qty * customer_doc.commission)
+
+    #####Adding Pamper Commission Calulation#################
+    def add_pamper_commission(self):
+        if self.settings.get("active_pamper_commission", 0):
+            self.pamper_commission = self.grand_total * (self.settings.get("pamper_commission", 0)/100)
+
+    # In the InvoiceForm class, add this new method:
+    def make_gl_dict_for_pamper_commission(self, gl_entries, company_defaults):
+        if self.settings.get("active_pamper_commission", 0) and self.settings.get("automatic_pamper_commission_creation", 0) and self.pamper_commission and self.pamper:
+            # Get the pamper commission account from settings
+            pamper_commission_account = self.settings.get("pamper_commission_account")
+            if not pamper_commission_account:
+                frappe.throw(_("Pamper Commission Account not set in Agriculture Settings"))
+            
+            # Entry 1: Debit the pamper commission expense account (cost to the company)
+            gl_entries.append({
+                "posting_date": self.posting_date,
+                "due_date": self.posting_date,
+                "account": pamper_commission_account,  # Commission expense account
+                "debit": self.pamper_commission,
+                "account_currency": company_defaults.default_currency,
+                "debit_in_account_currency": self.pamper_commission,
+                "voucher_type": self.doctype,
+                "voucher_no": self.name,
+                "company": self.company,
+                "cost_center": company_defaults.cost_center,
+                "debit_in_transaction_currency": self.pamper_commission,
+                "transaction_exchange_rate": 1,
+                "remarks": "Pamper commission expense"
+            })
+            
+            # Entry 2: Credit the pamper's customer account (payable to pamper)
+            gl_entries.append({
+                "posting_date": self.posting_date,
+                "due_date": self.posting_date,
+                "account": get_party_account("Customer", self.pamper, self.company),
+                "party_type": "Customer",
+                "party": self.pamper,
+                "credit": self.pamper_commission,
+                "account_currency": company_defaults.default_currency,
+                "credit_in_account_currency": self.pamper_commission,
+                "voucher_type": self.doctype,
+                "voucher_no": self.name,
+                "company": self.company,
+                "cost_center": company_defaults.cost_center,
+                "credit_in_transaction_currency": self.pamper_commission,
+                "transaction_exchange_rate": 1,
+                "remarks": "Pamper commission payable"
+            })
 
 
 def set_as_cancel(voucher_type, voucher_no):

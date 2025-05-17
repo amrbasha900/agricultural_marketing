@@ -1,0 +1,116 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="pdfkit-page-size" content="A4">
+    <meta name="pdfkit-orientation" content="Portrait">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Lateef:wght@200;300;400;500;600;700;800&family=Scheherazade+New:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@100..900&family=Cairo:wght@200..1000&display=swap"
+        rel="stylesheet">
+
+<style>
+    .print-format {
+        direction: rtl;
+        margin-left: 5mm;
+        margin-right: 5mm;
+        font-family: Cairo, sans-serif;
+    }
+
+    .print-format td, .print-format th {
+        vertical-align: middle !important;
+        text-align: center;
+        padding: 8px;
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .table-bordered {
+        border: 1px solid #ddd;
+    }
+
+    .table-bordered th, .table-bordered td {
+        border: 1px solid #ddd;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    .header-row {
+        background-color: #f9f9f9;
+    }
+
+    .total-row {
+        font-weight: bold;
+        background-color: #f5f5f5;
+    }
+</style>
+</head>
+
+<h1 class="text-center" style="margin-top:0">
+    {% if filters.party_type == "Customer" %}
+    تقرير حسابات العملاء
+    {% else %}
+    تقرير حسابات الموردين
+    {% endif %}
+</h1>
+
+<h4 class="text-center" style="margin-top:0;font-weight: 600 !important;">
+    من تاريخ : {%= filters.from_date %}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; الي تاريخ : {%= filters.to_date %}
+</h4>
+
+<table class="table table-bordered" style="text-align: center;">
+    <thead>
+        <tr class="header-row">
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">اسم الحساب</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">افتتاحي-مدين</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">افتتاحي-دائن</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">حركة-مدين</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">حركة-دائن</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">اجمالي-مدين</th>
+            <th style="font-size: 14px;font-weight: 700;text-align: center;">اجمالي-دائن</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% var total_opening_debit = 0,
+               total_opening_credit = 0,
+               total_movement_debit = 0,
+               total_movement_credit = 0,
+               total_debit = 0,
+               total_credit = 0;
+        %}
+        
+        {% for(var i=0, l=data.length; i<l; i++) { %}
+            <tr>
+                <td>{%= data[i].party %}</td>
+                <td>{%= format_currency(data[i].opening_debit) %}</td>
+                <td>{%= format_currency(data[i].opening_credit) %}</td>
+                <td>{%= format_currency(data[i].movement_debit) %}</td>
+                <td>{%= format_currency(data[i].movement_credit) %}</td>
+                <td>{%= format_currency(data[i].total_debit) %}</td>
+                <td>{%= format_currency(data[i].total_credit) %}</td>
+            </tr>
+            
+            {% total_opening_debit += data[i].opening_debit || 0; %}
+            {% total_opening_credit += data[i].opening_credit || 0; %}
+            {% total_movement_debit += data[i].movement_debit || 0; %}
+            {% total_movement_credit += data[i].movement_credit || 0; %}
+            {% total_debit += data[i].total_debit || 0; %}
+            {% total_credit += data[i].total_credit || 0; %}
+        {% } %}
+        
+        <tr class="total-row">
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">الإجماليات</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_opening_debit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_opening_credit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_movement_debit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_movement_credit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_debit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_credit) %}</td>
+        </tr>
+    </tbody>
+</table>

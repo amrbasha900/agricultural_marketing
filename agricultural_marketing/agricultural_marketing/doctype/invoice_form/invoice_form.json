@@ -32,7 +32,9 @@
   "pamper_commissions",
   "section_break_cwcc",
   "grand_total",
+  "column_break_uajo",
   "total_commissions_and_taxes",
+  "pamper_commission",
   "section_break_euqh",
   "has_supplier_commission_invoice"
  ],
@@ -216,12 +218,25 @@
    "fieldtype": "Check",
    "label": "Has Supplier Commission Invoice",
    "read_only": 1
+  },
+  {
+   "fieldname": "pamper_commission",
+   "fieldtype": "Float",
+   "label": "Pamper Commission",
+   "non_negative": 1,
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_uajo",
+   "fieldtype": "Column Break"
   }
  ],
+ "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-05-02 23:20:08.958802",
+ "modified": "2025-05-16 16:19:57.752429",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",
