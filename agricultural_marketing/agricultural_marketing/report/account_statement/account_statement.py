@@ -1,19 +1,103 @@
 import json
+import os
+import random
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import flt, getdate
+from frappe.utils.jinja_globals import is_rtl
+from frappe.utils.pdf import get_pdf as _get_pdf
 from frappe.query_builder.functions import Sum
 from pypika import Case
+from frappe.contacts.doctype.address.address import get_company_address
 
 @frappe.whitelist()
 def execute(filters=None):
+    if not filters:
+        filters = {}
+        
     if isinstance(filters, str):
         filters = json.loads(filters)
     
-    columns = get_columns(filters)
+    # Ensure required filters are set
+    if not filters.get("party_type"):
+        filters["party_type"] = "Customer"  # Set default
+    
+    if not filters.get("company"):
+        filters["company"] = frappe.defaults.get_user_default("Company")
+    
+    if filters.get("open_pdf"):
+        return generate_pdf_report(filters)
+    else:
+        columns = get_columns(filters)
+        data = get_report_data(filters)
+        
+        return columns, data
+
+def generate_pdf_report(filters):
+    data = []
+    file_urls = []
+    
+    # Get Data
     data = get_report_data(filters)
     
-    return columns, data
+    # Get company info
+    company_defaults = frappe.get_doc("Company", filters.get('company')).as_dict()
+    letter_head = None
+    default_letter_head = company_defaults.get("default_letter_head")
+    
+    if default_letter_head:
+        letter_head = frappe.get_doc("Letter Head", default_letter_head)
+    else:
+        company_defaults["address"] = get_company_address(company_defaults['name']).get("company_address_display")
+        company_defaults["image"] = frappe.db.get_value("File", {"attached_to_name": company_defaults['name']},
+                                                       "file_url")
+    
+    # Get HTML template
+    html_format = get_html_format()
+    font_size = frappe.db.get_single_value("Agriculture Settings", "font_size") or 14
+    
+    context = {
+        "letter_head": letter_head,
+        "company_defaults": company_defaults,
+        "data": data,
+        "filters": filters,
+        "lang": frappe.local.lang,
+        "layout_direction": "rtl" if is_rtl() else "ltr",
+        "font_size": font_size
+    }
+    
+    html = frappe.render_template(html_format, context)
+    
+    if filters.get("preview_html"):
+        return {"html": html}
+    
+    content = _get_pdf(html, {"orientation": "Portrait"})
+    file_name = "{0}-{1}.pdf".format("account-summary", str(random.randint(1000, 9999)))
+    file_doc = frappe.new_doc("File")
+    file_doc.update({
+        "file_name": file_name,
+        "is_private": 0,
+        "content": content
+    })
+    file_doc.save(ignore_permissions=True)
+    
+    return {
+        "file_url": file_doc.file_url
+    }
+
+def get_html_format():
+    """Get the HTML template for the report"""
+    folder_path = os.path.dirname(frappe.get_module("agricultural_marketing" + "." + "agricultural_marketing" + "." + "page").__file__)
+    file_path = os.path.join(folder_path, "customer_supplier_account_summary.html")
+    
+    # If template doesn't exist in agricultural_marketing module, use the one from your custom module
+    if not os.path.exists(file_path):
+        module_name = "your_custom_module"  # Replace with your actual module name
+        folder_path = os.path.dirname(frappe.get_module(module_name).__file__)
+        file_path = os.path.join(folder_path, "customer_supplier_account_summary.html")
+    
+    html_format = frappe.utils.get_html_format(file_path)
+    return html_format
 
 def get_columns(filters):
     """Define the columns for the report"""
@@ -94,27 +178,29 @@ def get_report_data(filters):
         # Get movement data (transactions between from_date and to_date)
         movements = get_movement_data(filters, party)
         
-        # For customers: invoice total -> debit, payments -> credit
-        # For suppliers: invoice total -> credit, payments -> debit
-        is_customer = filters.get("party_type") == "Customer"
-        
-        # Handle invoice data
-        if is_customer:
-            party_data["movement_debit"] += movements.get("invoices_total", 0)
-            party_data["movement_credit"] += movements.get("commission_total", 0)
+        if filters.get("consider_drafts"):
+            # When considering drafts, use the existing logic for movements
+            is_customer = filters.get("party_type") == "Customer"
+            
+            # Handle invoice data
+            if is_customer:
+                party_data["movement_debit"] += movements.get("invoices_total", 0)
+                party_data["movement_credit"] += movements.get("commission_total", 0)
+            else:
+                party_data["movement_credit"] += movements.get("invoices_total", 0)
+                party_data["movement_debit"] += movements.get("commission_total", 0)
+            
+            # Handle payment data consistently for both party types
+            if is_customer:
+                party_data["movement_credit"] += movements.get("receive_payments", 0)
+                party_data["movement_debit"] += movements.get("pay_payments", 0)
+            else:
+                party_data["movement_debit"] += movements.get("receive_payments", 0)
+                party_data["movement_credit"] += movements.get("pay_payments", 0)
         else:
-            party_data["movement_credit"] += movements.get("invoices_total", 0)
-            party_data["movement_debit"] += movements.get("commission_total", 0)
-        
-        # Handle payment data consistently for both party types
-        # "Receive" payments always go to credit for customers, debit for suppliers
-        # "Pay" payments always go to debit for customers, credit for suppliers
-        if is_customer:
-            party_data["movement_credit"] += movements.get("receive_payments", 0)
-            party_data["movement_debit"] += movements.get("pay_payments", 0)
-        else:
-            party_data["movement_debit"] += movements.get("receive_payments", 0)
-            party_data["movement_credit"] += movements.get("pay_payments", 0)
+            # When not considering drafts, use GL Entries directly
+            party_data["movement_debit"] = movements.get("movement_debit", 0)
+            party_data["movement_credit"] = movements.get("movement_credit", 0)
         
         # Calculate totals
         party_data["total_debit"] = party_data["opening_debit"] + party_data["movement_debit"]
@@ -129,19 +215,32 @@ def get_report_data(filters):
 
 def get_parties(filters):
     """Get list of parties based on filters"""
+    # Ensure party_type is valid
+    party_type = filters.get("party_type")
+    if not party_type:
+        frappe.throw(_("Party Type is required. Please select Customer or Supplier."))
+    
     if filters.get("party"):
         return [filters.get("party")]
     
     _filters = {}
-    if filters.get("party_type") == "Customer":
+    
+    if party_type == "Customer":
         _filters["is_customer"] = 1
+        
+        # Handle pamper filter for customers
+        if filters.get("include_pampers") is not None:
+            if not filters.get("include_pampers"):
+                # Exclude pampers - only include customers where is_pamper is not set or is 0
+                _filters["is_pamper"] = ["in", [0, None]]
+        
         if filters.get("party_group"):
             _filters["customer_group"] = filters.get("party_group")
-    else:
+    else:  # Supplier
         if filters.get("party_group"):
             _filters["supplier_group"] = filters.get("party_group")
     
-    return frappe.db.get_all(filters.get("party_type"), _filters, pluck="name")
+    return frappe.db.get_all(party_type, _filters, pluck="name")
 
 def get_opening_balances(filters, party):
     """Get opening balance for a party"""
@@ -208,12 +307,46 @@ def get_opening_balances(filters, party):
 def get_movement_data(filters, party):
     """Get movement data between from_date and to_date"""
     result = {
+        "movement_debit": 0,
+        "movement_credit": 0,
         "invoices_total": 0,
         "commission_total": 0,
         "receive_payments": 0,
         "pay_payments": 0
     }
     
+    # For non-draft transactions, get data directly from GL Entry
+    if not filters.get("consider_drafts"):
+        # Get GL entries for the period
+        gl_filters = {
+            "party_type": filters.get("party_type"),
+            "party": party,
+            "company": filters.get("company"),
+            "is_cancelled": 0,
+            "from_date": filters.get("from_date"),
+            "to_date": filters.get("to_date")
+        }
+        
+        gl_query = """
+            SELECT SUM(debit) as total_debit, SUM(credit) as total_credit
+            FROM `tabGL Entry`
+            WHERE party_type=%(party_type)s
+            AND party=%(party)s
+            AND company=%(company)s
+            AND is_cancelled=%(is_cancelled)s
+            AND posting_date >= %(from_date)s
+            AND posting_date <= %(to_date)s
+        """
+        
+        gl_entries = frappe.db.sql(gl_query, gl_filters, as_dict=True)
+        
+        if gl_entries and gl_entries[0]:
+            result["movement_debit"] = flt(gl_entries[0].total_debit, 2) or 0
+            result["movement_credit"] = flt(gl_entries[0].total_credit, 2) or 0
+        
+        return result
+    
+    # For drafts, use the existing logic
     # Get invoice data
     invoice_data = get_invoice_data(filters, party)
     result["invoices_total"] = invoice_data.get("total", 0)

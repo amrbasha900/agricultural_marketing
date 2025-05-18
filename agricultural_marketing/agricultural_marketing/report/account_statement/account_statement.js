@@ -44,6 +44,15 @@ frappe.query_reports["Account Statement"] = {
                 frappe.query_report.get_filter('party_group').df.fieldname = party_group_field;
                 frappe.query_report.get_filter('party_group').df.options = party_group_options;
                 
+                // Show or hide the "Include Pampers" filter based on party type
+                let include_pampers_filter = frappe.query_report.get_filter('include_pampers');
+                if (party_type === "Customer") {
+                    include_pampers_filter.df.hidden = 0;
+                } else {
+                    include_pampers_filter.df.hidden = 1;
+                    frappe.query_report.set_filter_value('include_pampers', 1); // Default to true for Suppliers
+                }
+                
                 frappe.query_report.refresh_filters();
             }
         },
@@ -54,6 +63,7 @@ frappe.query_reports["Account Statement"] = {
             "options": "Customer",
             "get_query": function() {
                 let party_type = frappe.query_report.get_filter_value('party_type');
+                if (!party_type) party_type = "Customer"; // Default if not set
                 return {
                     filters: { "disabled": 0 }
                 };
@@ -65,6 +75,14 @@ frappe.query_reports["Account Statement"] = {
             "fieldtype": "Link",
             "options": "Customer Group",
             "default": ""
+        },
+        {
+            "fieldname": "include_pampers",
+            "label": __("Include Pampers"),
+            "fieldtype": "Check",
+            "default": 1,
+            "hidden": 0, // Will be shown or hidden based on party_type
+            "depends_on": "eval:doc.party_type=='Customer'"
         },
         {
             "fieldname": "consider_drafts",
@@ -103,34 +121,29 @@ frappe.query_reports["Account Statement"] = {
     "name_field": "party",
     
     "onload": function(report) {
-        // Set appropriate label when party type changes
-        report.page.add_inner_button(__('Print'), function() {
-            let filters = report.get_values();
-            frappe.set_route('print', 'Customer Supplier Account Summary', 'Customer Supplier Account Summary', 
-                             JSON.stringify(filters));
-        });
-        
-        // If used in agri marketing module, add custom buttons to export data
-        if (frappe.boot.active_modules.includes("agricultural_marketing")) {
-            report.page.add_inner_button(__('Export PDF'), function() {
-                let filters = report.get_values();
-                export_report_as_pdf(filters);
-            });
+        // Ensure party_type is set to a default value
+        if (!frappe.query_report.get_filter_value('party_type')) {
+            frappe.query_report.set_filter_value('party_type', 'Customer');
         }
+        
+       
+        
+        
+        
+        // Set initial visibility of the Include Pampers filter
+        let party_type = frappe.query_report.get_filter_value('party_type');
+        if (!party_type) {
+            frappe.query_report.set_filter_value('party_type', 'Customer');
+            party_type = 'Customer';
+        }
+        
+        let include_pampers_filter = frappe.query_report.get_filter('include_pampers');
+        if (party_type === "Customer") {
+            include_pampers_filter.df.hidden = 0;
+        } else {
+            include_pampers_filter.df.hidden = 1;
+        }
+        
+        
     }
 };
-
-// Function to export report as PDF using the execute function in the Python file
-function export_report_as_pdf(filters) {
-    frappe.call({
-        method: "agricultural_marketing.agricultural_marketing.page.collection_form.collection_form.execute",
-        args: {
-            filters: filters
-        },
-        callback: function(r) {
-            if (r.message && r.message.file_url) {
-                window.open(r.message.file_url);
-            }
-        }
-    });
-}
