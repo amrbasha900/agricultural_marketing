@@ -36,35 +36,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Settings",
-   "link_count": 2,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Agriculture Settings",
-   "link_count": 0,
-   "link_to": "Agriculture Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Trial Balance Settings",
-   "link_count": 0,
-   "link_to": "Trial Balance Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Supplier Reports",
    "link_count": 2,
    "link_type": "DocType",
@@ -123,8 +94,47 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Doctypes",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Invoice Forms",
+   "link_count": 0,
+   "link_to": "Invoice Form",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "GL Entries",
+   "link_count": 0,
+   "link_to": "GL Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Account Statement",
+   "link_count": 0,
+   "link_to": "Account Statement",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "General Reports",
-   "link_count": 5,
+   "link_count": 6,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -182,8 +192,18 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Doctypes",
-   "link_count": 3,
+   "label": "Cash Statement Settings",
+   "link_count": 0,
+   "link_to": "Cash Statement Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 4,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -191,9 +211,9 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Invoice Forms",
+   "label": "Agriculture Settings",
    "link_count": 0,
-   "link_to": "Invoice Form",
+   "link_to": "Agriculture Settings",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -201,25 +221,35 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "GL Entries",
+   "label": "Trial Balance Settings",
    "link_count": 0,
-   "link_to": "GL Entry",
+   "link_to": "Trial Balance Settings",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   },
   {
    "hidden": 0,
-   "is_query_report": 1,
-   "label": "Account Statement",
+   "is_query_report": 0,
+   "label": "Invoice Form Permission",
    "link_count": 0,
-   "link_to": "Account Statement",
-   "link_type": "Report",
+   "link_to": "Invoice Form Permission",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cash Statement Settings",
+   "link_count": 0,
+   "link_to": "Cash Statement Settings",
+   "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   }
  ],
- "modified": "2025-05-18 17:02:46.345294",
+ "modified": "2025-05-21 02:01:03.083468",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Marketing",
