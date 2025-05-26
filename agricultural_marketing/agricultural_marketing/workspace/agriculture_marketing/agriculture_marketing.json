@@ -133,8 +133,57 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 4,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Agriculture Settings",
+   "link_count": 0,
+   "link_to": "Agriculture Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Trial Balance Settings",
+   "link_count": 0,
+   "link_to": "Trial Balance Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Invoice Form Permission",
+   "link_count": 0,
+   "link_to": "Invoice Form Permission",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cash Statement Settings",
+   "link_count": 0,
+   "link_to": "Cash Statement Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "General Reports",
-   "link_count": 6,
+   "link_count": 7,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -201,55 +250,16 @@
   },
   {
    "hidden": 0,
-   "is_query_report": 0,
-   "label": "Settings",
-   "link_count": 4,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Agriculture Settings",
+   "is_query_report": 1,
+   "label": "Cash Statement",
    "link_count": 0,
-   "link_to": "Agriculture Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Trial Balance Settings",
-   "link_count": 0,
-   "link_to": "Trial Balance Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Invoice Form Permission",
-   "link_count": 0,
-   "link_to": "Invoice Form Permission",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Cash Statement Settings",
-   "link_count": 0,
-   "link_to": "Cash Statement Settings",
-   "link_type": "DocType",
+   "link_to": "Cash Statement",
+   "link_type": "Report",
    "onboard": 0,
    "type": "Link"
   }
  ],
- "modified": "2025-05-21 02:01:03.083468",
+ "modified": "2025-05-25 15:38:51.438593",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Marketing",
