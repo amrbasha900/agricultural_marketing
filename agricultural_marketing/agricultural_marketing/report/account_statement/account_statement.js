@@ -31,30 +31,7 @@ frappe.query_reports["Account Statement"] = {
             "fieldtype": "Select",
             "options": ["Customer", "Supplier"],
             "default": "Customer",
-            "reqd": 1,
-            "on_change": function() {
-                let party_type = frappe.query_report.get_filter_value('party_type');
-                frappe.query_report.set_filter_value('party', "");
-                frappe.query_report.set_filter_value('party_group', "");
-                
-                let party_group_field = party_type === "Customer" ? "customer_group" : "supplier_group";
-                let party_group_options = party_type === "Customer" ? "Customer Group" : "Supplier Group";
-                
-                frappe.query_report.get_filter('party').df.options = party_type;
-                frappe.query_report.get_filter('party_group').df.fieldname = party_group_field;
-                frappe.query_report.get_filter('party_group').df.options = party_group_options;
-                
-                // Show or hide the "Include Pampers" filter based on party type
-                let include_pampers_filter = frappe.query_report.get_filter('include_pampers');
-                if (party_type === "Customer") {
-                    include_pampers_filter.df.hidden = 0;
-                } else {
-                    include_pampers_filter.df.hidden = 1;
-                    frappe.query_report.set_filter_value('include_pampers', 1); // Default to true for Suppliers
-                }
-                
-                frappe.query_report.refresh_filters();
-            }
+            "reqd": 1
         },
         {
             "fieldname": "party",
@@ -81,7 +58,6 @@ frappe.query_reports["Account Statement"] = {
             "label": __("Include Pampers"),
             "fieldtype": "Check",
             "default": 1,
-            "hidden": 0, // Will be shown or hidden based on party_type
             "depends_on": "eval:doc.party_type=='Customer'"
         },
         {
@@ -121,29 +97,39 @@ frappe.query_reports["Account Statement"] = {
     "name_field": "party",
     
     "onload": function(report) {
-        // Ensure party_type is set to a default value
+        // Simple initialization without complex filter manipulation
         if (!frappe.query_report.get_filter_value('party_type')) {
             frappe.query_report.set_filter_value('party_type', 'Customer');
         }
         
-       
-        
-        
-        
-        // Set initial visibility of the Include Pampers filter
-        let party_type = frappe.query_report.get_filter_value('party_type');
-        if (!party_type) {
-            frappe.query_report.set_filter_value('party_type', 'Customer');
-            party_type = 'Customer';
-        }
-        
-        let include_pampers_filter = frappe.query_report.get_filter('include_pampers');
-        if (party_type === "Customer") {
-            include_pampers_filter.df.hidden = 0;
-        } else {
-            include_pampers_filter.df.hidden = 1;
-        }
-        
-        
+        // Set up a listener for party_type changes using jQuery event delegation
+        $(document).off('change', '[data-fieldname="party_type"]');
+        $(document).on('change', '[data-fieldname="party_type"]', function() {
+            setTimeout(function() {
+                let party_type = frappe.query_report.get_filter_value('party_type');
+                
+                // Clear related filters
+                frappe.query_report.set_filter_value('party', '');
+                frappe.query_report.set_filter_value('party_group', '');
+                
+                // Update party filter options
+                let party_filter = frappe.query_report.get_filter('party');
+                if (party_filter && party_filter.df) {
+                    party_filter.df.options = party_type;
+                }
+                
+                // Update party group filter
+                let party_group_filter = frappe.query_report.get_filter('party_group');
+                if (party_group_filter && party_group_filter.df) {
+                    if (party_type === "Customer") {
+                        party_group_filter.df.options = "Customer Group";
+                        party_group_filter.df.label = __("Customer Group");
+                    } else {
+                        party_group_filter.df.options = "Supplier Group";
+                        party_group_filter.df.label = __("Supplier Group");
+                    }
+                }
+            }, 200);
+        });
     }
 };
