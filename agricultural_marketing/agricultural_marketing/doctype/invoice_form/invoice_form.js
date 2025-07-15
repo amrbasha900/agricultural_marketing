@@ -84,6 +84,9 @@ frappe.ui.form.on("Invoice Form", {
      	    });
      	    dialog.show();
         })
+        frm.add_custom_button("Send via WhatsApp", () => {
+            show_whatsapp_send_options(frm);
+        });
  	},
  	customer: function (frm, cdt, cdn) {
  	    frm.doc.items.forEach((row)=> {
@@ -176,7 +179,8 @@ function filter_child_tables_fields(frm) {
     frm.fields_dict['items'].grid.get_field("item_code").get_query = function() {
         return {
             filters: {
-                commission_item: 0
+                commission_item: 0,
+                is_agriculture_item: 1
             }
         }
     };
@@ -245,4 +249,248 @@ let get_query = function (frm, partyType, customerType) {
             name: ["in", result]
         },
     };
+}
+
+
+function show_whatsapp_send_options(frm) {
+    let dialog = new frappe.ui.Dialog({
+        title: "Send via WhatsApp",
+        fields: [
+            {
+                label: 'Send To',
+                fieldname: 'send_to',
+                fieldtype: 'Select',
+                options: ["", "Customers", "Supplier", "Both"],
+                reqd: 1
+            }
+        ],
+        size: "small",
+        primary_action_label: 'Send',
+        primary_action(values) {
+            dialog.hide();
+            if (values.send_to === "Customers") {
+                send_invoice_via_whatsapp_customers_manual(frm);
+            } else if (values.send_to === "Supplier") {
+                send_invoice_via_whatsapp_supplier_manual(frm);
+            } else if (values.send_to === "Both") {
+                send_invoice_via_whatsapp_both_manual(frm);
+            }
+        }
+    });
+    dialog.show();
+}
+
+function send_invoice_via_whatsapp_customers_manual(frm) {
+    let customers = [...new Set(frm.doc.items.map(item => item.customer))];
+    
+    if (customers.length === 0) {
+        frappe.msgprint(__("No customers found in items table"));
+        return;
+    }
+    
+    // Check for WhatsApp numbers only (not the enable flag)
+    frappe.call({
+        method: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.get_parties_with_whatsapp_numbers",
+        args: {
+            customers: customers
+        },
+        callback: function(r) {
+            if (r.message && r.message.customers_with_whatsapp.length > 0) {
+                show_whatsapp_confirmation_dialog_manual(frm, r.message.customers_with_whatsapp, r.message.customers_without_whatsapp, "customers");
+            } else {
+                frappe.msgprint(__("No customers have WhatsApp numbers configured"));
+            }
+        }
+    });
+}
+
+function send_invoice_via_whatsapp_supplier_manual(frm) {
+    if (!frm.doc.supplier) {
+        frappe.msgprint(__("No supplier found in this invoice"));
+        return;
+    }
+    
+    // Check for WhatsApp number only (not the enable flag)
+    frappe.call({
+        method: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.get_parties_with_whatsapp_numbers",
+        args: {
+            customers: [],
+            supplier: frm.doc.supplier
+        },
+        callback: function(r) {
+            if (r.message && r.message.supplier_has_whatsapp) {
+                show_whatsapp_confirmation_dialog_manual(frm, [frm.doc.supplier], [], "supplier");
+            } else {
+                frappe.msgprint(__("Supplier does not have WhatsApp number configured"));
+            }
+        }
+    });
+}
+
+function send_invoice_via_whatsapp_both_manual(frm) {
+    let customers = [...new Set(frm.doc.items.map(item => item.customer))];
+    
+    frappe.call({
+        method: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.get_parties_with_whatsapp_numbers",
+        args: {
+            customers: customers,
+            supplier: frm.doc.supplier
+        },
+        callback: function(r) {
+            if (r.message) {
+                let total_with_whatsapp = r.message.customers_with_whatsapp.length + (r.message.supplier_has_whatsapp ? 1 : 0);
+                if (total_with_whatsapp > 0) {
+                    show_whatsapp_confirmation_dialog_both_manual(frm, r.message);
+                } else {
+                    frappe.msgprint(__("No parties have WhatsApp numbers configured"));
+                }
+            }
+        }
+    });
+}
+
+function show_whatsapp_confirmation_dialog_manual(frm, parties_with_whatsapp, parties_without_whatsapp, type) {
+    let message = `<p><strong>Ready to send via WhatsApp:</strong></p>`;
+    message += `<ul>`;
+    parties_with_whatsapp.forEach(party => {
+        message += `<li>${party}</li>`;
+    });
+    message += `</ul>`;
+    
+    if (parties_without_whatsapp.length > 0) {
+        message += `<p><strong>No WhatsApp number configured for:</strong></p>`;
+        message += `<ul>`;
+        parties_without_whatsapp.forEach(party => {
+            message += `<li>${party}</li>`;
+        });
+        message += `</ul>`;
+    }
+    
+    frappe.confirm(
+        message + "<br>Do you want to proceed with sending?",
+        function() {
+            if (type === "customers") {
+                send_to_customers_manual(frm, parties_with_whatsapp);
+            } else if (type === "supplier") {
+                send_to_supplier_manual(frm, parties_with_whatsapp[0]);
+            }
+        }
+    );
+}
+
+function show_whatsapp_confirmation_dialog_both_manual(frm, data) {
+    let message = `<p><strong>Ready to send via WhatsApp:</strong></p><ul>`;
+    
+    if (data.supplier_has_whatsapp) {
+        message += `<li>Supplier: ${frm.doc.supplier}</li>`;
+    }
+    
+    data.customers_with_whatsapp.forEach(customer => {
+        message += `<li>Customer: ${customer}</li>`;
+    });
+    message += `</ul>`;
+    
+    let without_whatsapp_count = data.customers_without_whatsapp.length + (data.supplier_has_whatsapp ? 0 : 1);
+    if (without_whatsapp_count > 0) {
+        message += `<p><strong>No WhatsApp number configured for:</strong></p><ul>`;
+        if (!data.supplier_has_whatsapp) {
+            message += `<li>Supplier: ${frm.doc.supplier}</li>`;
+        }
+        data.customers_without_whatsapp.forEach(customer => {
+            message += `<li>Customer: ${customer}</li>`;
+        });
+        message += `</ul>`;
+    }
+    
+    frappe.confirm(
+        message + "<br>Do you want to proceed with sending?",
+        function() {
+            send_to_both_manual(frm, data);
+        }
+    );
+}
+
+function send_to_customers_manual(frm, customers) {
+    frappe.show_alert({
+        message: __("Preparing WhatsApp messages..."),
+        indicator: "blue"
+    });
+    
+    frappe.call({
+        method: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.send_invoice_whatsapp_bulk_manual",
+        args: {
+            invoice_name: frm.doc.name,
+            customers: customers
+        },
+        callback: function(r) {
+            if (r.message && r.message.success) {
+                frappe.show_alert({
+                    message: r.message.message,
+                    indicator: "green"
+                });
+            } else {
+                frappe.show_alert({
+                    message: r.message ? r.message.error : "Error sending WhatsApp messages",
+                    indicator: "red"
+                });
+            }
+        }
+    });
+}
+
+function send_to_supplier_manual(frm, supplier) {
+    frappe.show_alert({
+        message: __("Preparing WhatsApp message for supplier..."),
+        indicator: "blue"
+    });
+    
+    frappe.call({
+        method: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.send_invoice_whatsapp_supplier_manual",
+        args: {
+            invoice_name: frm.doc.name,
+            supplier: supplier
+        },
+        callback: function(r) {
+            if (r.message && r.message.success) {
+                frappe.show_alert({
+                    message: r.message.message,
+                    indicator: "green"
+                });
+            } else {
+                frappe.show_alert({
+                    message: r.message ? r.message.error : "Error sending WhatsApp message",
+                    indicator: "red"
+                });
+            }
+        }
+    });
+}
+
+function send_to_both_manual(frm, data) {
+    frappe.show_alert({
+        message: __("Preparing WhatsApp messages..."),
+        indicator: "blue"
+    });
+    
+    frappe.call({
+        method: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.send_invoice_whatsapp_all_manual",
+        args: {
+            invoice_name: frm.doc.name,
+            customers: data.customers_with_whatsapp,
+            supplier: data.supplier_has_whatsapp ? frm.doc.supplier : null
+        },
+        callback: function(r) {
+            if (r.message && r.message.success) {
+                frappe.show_alert({
+                    message: r.message.message,
+                    indicator: "green"
+                });
+            } else {
+                frappe.show_alert({
+                    message: r.message ? r.message.error : "Error sending WhatsApp messages",
+                    indicator: "red"
+                });
+            }
+        }
+    });
 }

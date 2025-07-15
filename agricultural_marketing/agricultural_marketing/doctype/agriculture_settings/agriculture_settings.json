@@ -21,6 +21,7 @@
   "default_tax",
   "font_size",
   "report_note",
+  "title_of_supplier_invoice_in_pdf",
   "pamper_section",
   "active_pamper_commission",
   "pamper_commission",
@@ -161,13 +162,18 @@
    "label": "Pamper Commission Account",
    "mandatory_depends_on": "eval:doc.automatic_pamper_commission_creation",
    "options": "Account"
+  },
+  {
+   "fieldname": "title_of_supplier_invoice_in_pdf",
+   "fieldtype": "Data",
+   "label": "Title of Supplier Invoice in PDF"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-05-16 16:16:53.980058",
+ "modified": "2025-06-29 15:50:00.434534",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",

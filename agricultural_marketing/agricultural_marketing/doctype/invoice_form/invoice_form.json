@@ -9,6 +9,7 @@
   "section_break_zpo6",
   "naming_series",
   "company",
+  "sent_via_whatsapp",
   "column_break_rame",
   "posting_date",
   "posting_time",
@@ -230,13 +231,20 @@
   {
    "fieldname": "column_break_uajo",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "sent_via_whatsapp",
+   "fieldtype": "Check",
+   "label": "Sent Via WhatsApp",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-05-16 16:19:57.752429",
+ "modified": "2025-07-07 15:43:21.539227",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",

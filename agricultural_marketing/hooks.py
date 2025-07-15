@@ -130,6 +130,9 @@ doc_events = {
     "Sales Invoice": {
         "on_cancel": "agricultural_marketing.standard_doctypes.sales_invoice.update_invoice_form",
         "on_trash": "agricultural_marketing.standard_doctypes.sales_invoice.update_invoice_form",
+    },
+    "WhatsApp Messages": {
+        "on_change": "agricultural_marketing.standard_doctypes.whatsapp_messages.update_invoice_form",
     }
 }
 
@@ -229,3 +232,10 @@ doc_events = {
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
+fixtures = [
+    {"dt": "Custom Field", "filters": [["name", "in", [
+        "Customer-custom_send_invoice_via_whatsapp",
+        "Supplier-custom_send_invoice_via_whatsapp",
+        "Item-custom_is_agriculture_item"
+        ]]]},
+]

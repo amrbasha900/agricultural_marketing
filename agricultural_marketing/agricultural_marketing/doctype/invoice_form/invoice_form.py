@@ -16,11 +16,19 @@ class InvoiceForm(Document):
     pos_profile = frappe.get_doc("POS Profile", settings.get("pos_profile"))
     customer_commission_invoice_refs = []
 
+
     def validate(self):
         self.update_grand_total()
         self.update_customer_commission()
         self.update_commission_and_taxes()
         self.add_pamper_commission()
+        if not self.is_draft and self.docstatus==0:
+            self.auto_send_whatsapp_on_save()
+        pamper_name = frappe.db.sql("select pamper from `tabInvoice Form Permission Details` where user = '"+frappe.session.user+"' ", as_dict=1)
+        if pamper_name and not self.pamper:
+            self.pamper = pamper_name[0].pamper 
+        else:
+            pass
 
     def on_submit(self):
         self.make_gl_entries()
@@ -356,6 +364,34 @@ class InvoiceForm(Document):
                 "remarks": "Pamper commission payable"
             })
 
+    ###send pdf whatsapp
+    def auto_send_whatsapp_on_save(self):
+        """Auto send WhatsApp to enabled parties on save"""
+        try:
+            # Get unique customers
+            customers = list(set([item.customer for item in self.items if item.customer]))
+            
+            # Check enabled parties
+            enabled_customers = []
+            for customer in customers:
+                if frappe.db.get_value("Customer", customer, "send_invoice_via_whatsapp"):
+                    enabled_customers.append(customer)
+            
+            supplier_enabled = bool(frappe.db.get_value("Supplier", self.supplier, "send_invoice_via_whatsapp"))
+            
+            # Send to enabled parties
+            if enabled_customers or supplier_enabled:
+                frappe.enqueue(
+                    method='agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.auto_send_whatsapp_background',
+                    queue='short',
+                    timeout=300,
+                    invoice_name=self.name,
+                    customers=enabled_customers,
+                    supplier=self.supplier if supplier_enabled else None
+                )
+                
+        except Exception as e:
+            frappe.log_error(f"Auto WhatsApp send error: {str(e)}", "Auto WhatsApp Send")
 
 def set_as_cancel(voucher_type, voucher_no):
     """
@@ -492,3 +528,649 @@ def build_pdf_template_context(filters):
             })
 
     return res
+
+
+
+import json
+import random
+import time
+
+# Add these functions at the end of your invoice_form.py file
+
+@frappe.whitelist()
+def check_customers_whatsapp_enabled(customers):
+    """Check which customers have WhatsApp sending enabled"""
+    if isinstance(customers, str):
+        customers = json.loads(customers)
+    
+    enabled_customers = []
+    disabled_customers = []
+    
+    for customer in customers:
+        send_via_whatsapp = frappe.db.get_value("Customer", customer, "send_invoice_via_whatsapp")
+        if send_via_whatsapp:
+            enabled_customers.append(customer)
+        else:
+            disabled_customers.append(customer)
+    
+    return {
+        "enabled_customers": enabled_customers,
+        "disabled_customers": disabled_customers
+    }
+
+@frappe.whitelist()
+def check_supplier_whatsapp_enabled(supplier):
+    """Check if supplier has WhatsApp sending enabled"""
+    send_via_whatsapp = frappe.db.get_value("Supplier", supplier, "send_invoice_via_whatsapp")
+    return {"enabled": bool(send_via_whatsapp)}
+
+@frappe.whitelist()
+def check_all_parties_whatsapp_enabled(customers, supplier):
+    """Check WhatsApp status for all parties"""
+    if isinstance(customers, str):
+        customers = json.loads(customers)
+    
+    # Check customers
+    enabled_customers = []
+    disabled_customers = []
+    for customer in customers:
+        if frappe.db.get_value("Customer", customer, "send_invoice_via_whatsapp"):
+            enabled_customers.append(customer)
+        else:
+            disabled_customers.append(customer)
+    
+    # Check supplier
+    supplier_enabled = bool(frappe.db.get_value("Supplier", supplier, "send_invoice_via_whatsapp"))
+    
+    return {
+        "enabled_customers": enabled_customers,
+        "disabled_customers": disabled_customers,
+        "supplier_enabled": supplier_enabled
+    }
+
+@frappe.whitelist()
+def send_invoice_whatsapp_bulk(invoice_name, customers):
+    """Send invoice via WhatsApp to multiple customers"""
+    if isinstance(customers, str):
+        customers = json.loads(customers)
+    
+    try:
+        invoice_doc = frappe.get_doc("Invoice Form", invoice_name)
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        for customer in customers:
+            try:
+                result = create_and_send_customer_invoice_whatsapp(invoice_doc, customer)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"{customer}: {result.get('error', 'Unknown error')}")
+                time.sleep(1)
+            except Exception as e:
+                error_count += 1
+                errors.append(f"{customer}: {str(e)}")
+        
+        frappe.db.commit()
+        
+        if success_count > 0:
+            message = f"WhatsApp messages sent to {success_count} customer(s)"
+            if error_count > 0:
+                message += f". {error_count} failed"
+            return {"success": True, "message": message}
+        else:
+            return {"error": f"All sends failed: {'; '.join(errors[:2])}"}
+            
+    except Exception as e:
+        frappe.log_error(f"Error in send_invoice_whatsapp_bulk: {str(e)}", "WhatsApp Bulk Send")
+        return {"error": str(e)}
+
+@frappe.whitelist()
+def send_invoice_whatsapp_supplier(invoice_name, supplier):
+    """Send invoice via WhatsApp to supplier"""
+    try:
+        invoice_doc = frappe.get_doc("Invoice Form", invoice_name)
+        result = create_and_send_supplier_invoice_whatsapp(invoice_doc, supplier)
+        
+        frappe.db.commit()
+        
+        if result.get("success"):
+            return {"success": True, "message": "WhatsApp message sent to supplier"}
+        else:
+            return {"error": result.get("error", "Failed to send to supplier")}
+            
+    except Exception as e:
+        frappe.log_error(f"Error in send_invoice_whatsapp_supplier: {str(e)}", "WhatsApp Supplier Send")
+        return {"error": str(e)}
+
+@frappe.whitelist()
+def send_invoice_whatsapp_all(invoice_name, customers, supplier=None):
+    """Send invoice via WhatsApp to all enabled parties"""
+    if isinstance(customers, str):
+        customers = json.loads(customers)
+    
+    try:
+        invoice_doc = frappe.get_doc("Invoice Form", invoice_name)
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        # Send to customers
+        for customer in customers:
+            try:
+                result = create_and_send_customer_invoice_whatsapp(invoice_doc, customer)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"Customer {customer}: {result.get('error', 'Unknown error')}")
+                time.sleep(1)
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Customer {customer}: {str(e)}")
+        
+        # Send to supplier if enabled
+        if supplier:
+            try:
+                result = create_and_send_supplier_invoice_whatsapp(invoice_doc, supplier)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"Supplier {supplier}: {result.get('error', 'Unknown error')}")
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Supplier {supplier}: {str(e)}")
+        
+        frappe.db.commit()
+        
+        if success_count > 0:
+            message = f"WhatsApp messages sent to {success_count} recipient(s)"
+            if error_count > 0:
+                message += f". {error_count} failed"
+            return {"success": True, "message": message}
+        else:
+            return {"error": f"All sends failed: {'; '.join(errors[:2])}"}
+            
+    except Exception as e:
+        frappe.log_error(f"Error in send_invoice_whatsapp_all: {str(e)}", "WhatsApp All Send")
+        return {"error": str(e)}
+
+def create_and_send_customer_invoice_whatsapp(invoice_doc, customer):
+    """Create PDF for specific customer and send via WhatsApp"""
+    try:
+        customer_doc = frappe.get_doc("Customer", customer)
+        if not customer_doc.get("send_invoice_via_whatsapp"):
+            return {"error": "WhatsApp sending not enabled"}
+        
+        whatsapp_number = customer_doc.get("whatsapp_number")
+        if not whatsapp_number:
+            return {"error": "WhatsApp number not found"}
+        
+        # Generate PDF using your existing build_pdf_template_context
+        filters = {
+            "reference_doctype": invoice_doc.doctype,
+            "reference_name": invoice_doc.name,
+            "party_type": "Customer",
+            "party": customer,
+            "customer_type": "Customer"
+        }
+        
+        pdf_url = generate_customer_invoice_pdf_whatsapp(filters, customer)
+        if not pdf_url:
+            return {"error": "Failed to generate PDF"}
+        
+        whatsapp_result = create_whatsapp_message_for_customer_invoice(
+            customer=customer,
+            pdf_url=pdf_url,
+            invoice_name=invoice_doc.name,
+            customer_doc=customer_doc
+        )
+        
+        if whatsapp_result:
+            return {"success": True}
+        else:
+            return {"error": "Failed to create WhatsApp message"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+def create_and_send_supplier_invoice_whatsapp(invoice_doc, supplier):
+    """Create PDF for supplier and send via WhatsApp"""
+    try:
+        supplier_doc = frappe.get_doc("Supplier", supplier)
+        if not supplier_doc.get("send_invoice_via_whatsapp"):
+            return {"error": "WhatsApp sending not enabled"}
+        
+        whatsapp_number = supplier_doc.get("whatsapp_number")
+        if not whatsapp_number:
+            return {"error": "WhatsApp number not found"}
+        
+        # Generate PDF for supplier
+        filters = {
+            "reference_doctype": invoice_doc.doctype,
+            "reference_name": invoice_doc.name,
+            "party_type": "Supplier",
+            "party": supplier,
+            "customer_type": ""
+        }
+        
+        pdf_url = generate_supplier_invoice_pdf_whatsapp(filters, supplier)
+        if not pdf_url:
+            return {"error": "Failed to generate PDF"}
+        
+        whatsapp_result = create_whatsapp_message_for_supplier_invoice(
+            supplier=supplier,
+            pdf_url=pdf_url,
+            invoice_name=invoice_doc.name,
+            supplier_doc=supplier_doc
+        )
+        
+        if whatsapp_result:
+            return {"success": True}
+        else:
+            return {"error": "Failed to create WhatsApp message"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+def generate_customer_invoice_pdf_whatsapp(filters, customer):
+    """Generate PDF for customer using existing template logic"""
+    try:
+        from agricultural_marketing.pdf import _get_pdf
+        
+        # Get letter head
+        letter_head = None
+        invoice_doc = frappe.get_doc("Invoice Form", filters['reference_name'])
+        default_letter_head = frappe.get_value("Company", invoice_doc.company, "default_letter_head")
+        if default_letter_head:
+            letter_head = frappe.get_doc("Letter Head", default_letter_head)
+        
+        # Use your existing build_pdf_template_context function
+        context_data = build_pdf_template_context(filters)
+        
+        # Use your existing template
+        html = frappe.render_template("agricultural_marketing/agricultural_marketing/doctype/invoice_form/invoice_form_whatsapp_pdf.html", {
+            "data": context_data,
+            "filters": filters,
+            "letter_head": letter_head,
+            "lang": 'ar',
+            "layout_direction": "rtl"
+        })
+        
+        content = _get_pdf(html, {"orientation": "Portrait"})
+        
+        file_name = f"Invoice-{filters['reference_name']}-{customer}-{random.randint(1000, 9999)}.pdf"
+        file_doc = frappe.new_doc("File")
+        file_doc.update({
+            "file_name": file_name,
+            "is_private": 0,
+            "content": content
+        })
+        file_doc.save(ignore_permissions=True)
+        
+        return file_doc.file_url
+        
+    except Exception as e:
+        frappe.log_error(f"PDF generation error for customer {customer}: {str(e)}", "PDF Generation")
+        return None
+
+def generate_supplier_invoice_pdf_whatsapp(filters, supplier):
+    """Generate PDF for supplier using existing template logic"""
+    try:
+        from agricultural_marketing.pdf import _get_pdf
+        
+        # Get letter head
+        letter_head = None
+        invoice_doc = frappe.get_doc("Invoice Form", filters['reference_name'])
+        default_letter_head = frappe.get_value("Company", invoice_doc.company, "default_letter_head")
+        if default_letter_head:
+            letter_head = frappe.get_doc("Letter Head", default_letter_head)
+        
+        # Use your existing build_pdf_template_context function
+        context_data = build_pdf_template_context(filters)
+        
+        # Use your existing template
+        html = frappe.render_template("agricultural_marketing/agricultural_marketing/doctype/invoice_form/invoice_form_whatsapp_pdf.html", {
+            "data": context_data,
+            "filters": filters,
+            "letter_head": letter_head,
+            "lang": 'ar',
+            "layout_direction": "rtl"
+        })
+        
+        content = _get_pdf(html, {"orientation": "Portrait"})
+        
+        file_name = f"Invoice-{filters['reference_name']}-Supplier-{supplier}-{random.randint(1000, 9999)}.pdf"
+        file_doc = frappe.new_doc("File")
+        file_doc.update({
+            "file_name": file_name,
+            "is_private": 0,
+            "content": content
+        })
+        file_doc.save(ignore_permissions=True)
+        
+        return file_doc.file_url
+        
+    except Exception as e:
+        frappe.log_error(f"PDF generation error for supplier {supplier}: {str(e)}", "PDF Generation")
+        return None
+
+def create_whatsapp_message_for_customer_invoice(customer, pdf_url, invoice_name, customer_doc):
+    """Create WhatsApp message entry for customer"""
+    try:
+        default_message = customer_doc.get("default_whatsapp_message") or f"Invoice {invoice_name} is ready"
+        
+        whatsapp_message = frappe.new_doc("WhatsApp Messages")
+        whatsapp_message.update({
+            "party_type": "Customer",
+            "party_name": customer,
+            "phone_number": customer_doc.get("whatsapp_number"),
+            "has_media": 1,
+            "auto_send": 1,
+            "message": default_message,
+            "status": "Queued",
+            "attach": pdf_url,
+            "reference_document": "Invoice Form",
+            "document_name": invoice_name
+        })
+        
+        whatsapp_message.insert(ignore_permissions=True)
+        return whatsapp_message.name
+        
+    except Exception as e:
+        frappe.log_error(f"WhatsApp message creation error for {customer}: {str(e)}")
+        return None
+
+def create_whatsapp_message_for_supplier_invoice(supplier, pdf_url, invoice_name, supplier_doc):
+    """Create WhatsApp message entry for supplier"""
+    try:
+        default_message = supplier_doc.get("default_whatsapp_message") or f"Invoice {invoice_name} is ready"
+        
+        whatsapp_message = frappe.new_doc("WhatsApp Messages")
+        whatsapp_message.update({
+            "party_type": "Supplier",
+            "party_name": supplier,
+            "phone_number": supplier_doc.get("whatsapp_number"),
+            "has_media": 1,
+            "auto_send": 1,
+            "message": default_message,
+            "status": "Queued",
+            "attach": pdf_url,
+            "reference_document": "Invoice Form",
+            "document_name": invoice_name
+        })
+        
+        whatsapp_message.insert(ignore_permissions=True)
+        return whatsapp_message.name
+        
+    except Exception as e:
+        frappe.log_error(f"WhatsApp message creation error for supplier {supplier}: {str(e)}")
+        return None
+
+
+@frappe.whitelist()
+def send_invoice_whatsapp_bulk_manual(invoice_name, customers):
+    """Send invoice via WhatsApp to multiple customers (manual - no enable check)"""
+    if isinstance(customers, str):
+        customers = json.loads(customers)
+    
+    try:
+        invoice_doc = frappe.get_doc("Invoice Form", invoice_name)
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        for customer in customers:
+            try:
+                result = create_and_send_customer_invoice_whatsapp_manual(invoice_doc, customer)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"{customer}: {result.get('error', 'Unknown error')}")
+                time.sleep(1)
+            except Exception as e:
+                error_count += 1
+                errors.append(f"{customer}: {str(e)}")
+        
+        frappe.db.commit()
+        
+        if success_count > 0:
+            message = f"WhatsApp messages sent to {success_count} customer(s)"
+            if error_count > 0:
+                message += f". {error_count} failed"
+            return {"success": True, "message": message}
+        else:
+            return {"error": f"All sends failed: {'; '.join(errors[:2])}"}
+            
+    except Exception as e:
+        frappe.log_error(f"Error in send_invoice_whatsapp_bulk_manual: {str(e)}", "WhatsApp Bulk Send Manual")
+        return {"error": str(e)}
+
+@frappe.whitelist()
+def send_invoice_whatsapp_supplier_manual(invoice_name, supplier):
+    """Send invoice via WhatsApp to supplier (manual - no enable check)"""
+    try:
+        invoice_doc = frappe.get_doc("Invoice Form", invoice_name)
+        result = create_and_send_supplier_invoice_whatsapp_manual(invoice_doc, supplier)
+        
+        frappe.db.commit()
+        
+        if result.get("success"):
+            return {"success": True, "message": "WhatsApp message sent to supplier"}
+        else:
+            return {"error": result.get("error", "Failed to send to supplier")}
+            
+    except Exception as e:
+        frappe.log_error(f"Error in send_invoice_whatsapp_supplier_manual: {str(e)}", "WhatsApp Supplier Send Manual")
+        return {"error": str(e)}
+
+@frappe.whitelist()
+def send_invoice_whatsapp_all_manual(invoice_name, customers, supplier=None):
+    """Send invoice via WhatsApp to all parties (manual - no enable check)"""
+    if isinstance(customers, str):
+        customers = json.loads(customers)
+    
+    try:
+        invoice_doc = frappe.get_doc("Invoice Form", invoice_name)
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        # Send to customers
+        for customer in customers:
+            try:
+                result = create_and_send_customer_invoice_whatsapp_manual(invoice_doc, customer)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"Customer {customer}: {result.get('error', 'Unknown error')}")
+                time.sleep(1)
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Customer {customer}: {str(e)}")
+        
+        # Send to supplier if provided
+        if supplier:
+            try:
+                result = create_and_send_supplier_invoice_whatsapp_manual(invoice_doc, supplier)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"Supplier {supplier}: {result.get('error', 'Unknown error')}")
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Supplier {supplier}: {str(e)}")
+        
+        frappe.db.commit()
+        
+        if success_count > 0:
+            message = f"WhatsApp messages sent to {success_count} recipient(s)"
+            if error_count > 0:
+                message += f". {error_count} failed"
+            return {"success": True, "message": message}
+        else:
+            return {"error": f"All sends failed: {'; '.join(errors[:2])}"}
+            
+    except Exception as e:
+        frappe.log_error(f"Error in send_invoice_whatsapp_all_manual: {str(e)}", "WhatsApp All Send Manual")
+        return {"error": str(e)}
+
+def create_and_send_customer_invoice_whatsapp_manual(invoice_doc, customer):
+    """Create PDF for specific customer and send via WhatsApp (manual - no enable check)"""
+    try:
+        customer_doc = frappe.get_doc("Customer", customer)
+        
+        whatsapp_number = customer_doc.get("whatsapp_number")
+        if not whatsapp_number:
+            return {"error": "WhatsApp number not found"}
+        
+        # Generate PDF using your existing build_pdf_template_context
+        filters = {
+            "reference_doctype": invoice_doc.doctype,
+            "reference_name": invoice_doc.name,
+            "party_type": "Customer",
+            "party": customer,
+            "customer_type": "Customer"
+        }
+        
+        pdf_url = generate_customer_invoice_pdf_whatsapp(filters, customer)
+        if not pdf_url:
+            return {"error": "Failed to generate PDF"}
+        
+        whatsapp_result = create_whatsapp_message_for_customer_invoice_manual(
+            customer=customer,
+            pdf_url=pdf_url,
+            invoice_name=invoice_doc.name,
+            customer_doc=customer_doc
+        )
+        
+        if whatsapp_result:
+            return {"success": True}
+        else:
+            return {"error": "Failed to create WhatsApp message"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+def create_and_send_supplier_invoice_whatsapp_manual(invoice_doc, supplier):
+    """Create PDF for supplier and send via WhatsApp (manual - no enable check)"""
+    try:
+        supplier_doc = frappe.get_doc("Supplier", supplier)
+        
+        whatsapp_number = supplier_doc.get("whatsapp_number")
+        if not whatsapp_number:
+            return {"error": "WhatsApp number not found"}
+        
+        # Generate PDF for supplier
+        filters = {
+            "reference_doctype": invoice_doc.doctype,
+            "reference_name": invoice_doc.name,
+            "party_type": "Supplier",
+            "party": supplier,
+            "customer_type": ""
+        }
+        
+        pdf_url = generate_supplier_invoice_pdf_whatsapp(filters, supplier)
+        if not pdf_url:
+            return {"error": "Failed to generate PDF"}
+        
+        whatsapp_result = create_whatsapp_message_for_supplier_invoice_manual(
+            supplier=supplier,
+            pdf_url=pdf_url,
+            invoice_name=invoice_doc.name,
+            supplier_doc=supplier_doc
+        )
+        
+        if whatsapp_result:
+            return {"success": True}
+        else:
+            return {"error": "Failed to create WhatsApp message"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+def create_whatsapp_message_for_customer_invoice_manual(customer, pdf_url, invoice_name, customer_doc):
+    """Create WhatsApp message entry for customer (manual - no enable check)"""
+    try:
+        default_message = customer_doc.get("default_whatsapp_message") or f"Invoice {invoice_name} is ready"
+        
+        whatsapp_message = frappe.new_doc("WhatsApp Messages")
+        whatsapp_message.update({
+            "party_type": "Customer",
+            "party_name": customer,
+            "phone_number": customer_doc.get("whatsapp_number"),
+            "has_media": 1,
+            "auto_send": 1,
+            "message": default_message,
+            "status": "Queued",
+            "attach": pdf_url,
+            "reference_document": "Invoice Form",
+            "document_name": invoice_name
+        })
+        
+        whatsapp_message.insert(ignore_permissions=True)
+        return whatsapp_message.name
+        
+    except Exception as e:
+        frappe.log_error(f"WhatsApp message creation error for {customer}: {str(e)}")
+        return None
+
+def create_whatsapp_message_for_supplier_invoice_manual(supplier, pdf_url, invoice_name, supplier_doc):
+    """Create WhatsApp message entry for supplier (manual - no enable check)"""
+    try:
+        default_message = supplier_doc.get("default_whatsapp_message") or f"Invoice {invoice_name} is ready"
+        
+        whatsapp_message = frappe.new_doc("WhatsApp Messages")
+        whatsapp_message.update({
+            "party_type": "Supplier",
+            "party_name": supplier,
+            "phone_number": supplier_doc.get("whatsapp_number"),
+            "has_media": 1,
+            "auto_send": 1,
+            "message": default_message,
+            "status": "Queued",
+            "attach": pdf_url,
+            "reference_document": "Invoice Form",
+            "document_name": invoice_name
+        })
+        
+        whatsapp_message.insert(ignore_permissions=True)
+        return whatsapp_message.name
+        
+    except Exception as e:
+        frappe.log_error(f"WhatsApp message creation error for supplier {supplier}: {str(e)}")
+        return None
+
+# Also add a function to get parties with WhatsApp numbers (for JS validation)
+@frappe.whitelist()
+def get_parties_with_whatsapp_numbers(customers, supplier=None):
+    """Get parties that have WhatsApp numbers configured"""
+    if isinstance(customers, str):
+        customers = json.loads(customers)
+    
+    result = {
+        "customers_with_whatsapp": [],
+        "customers_without_whatsapp": [],
+        "supplier_has_whatsapp": False
+    }
+    
+    # Check customers
+    for customer in customers:
+        whatsapp_number = frappe.db.get_value("Customer", customer, "whatsapp_number")
+        if whatsapp_number:
+            result["customers_with_whatsapp"].append(customer)
+        else:
+            result["customers_without_whatsapp"].append(customer)
+    
+    # Check supplier
+    if supplier:
+        supplier_whatsapp = frappe.db.get_value("Supplier", supplier, "whatsapp_number")
+        result["supplier_has_whatsapp"] = bool(supplier_whatsapp)
+    
+    return result
