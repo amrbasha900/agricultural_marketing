@@ -1,67 +1,151 @@
 {
- "actions": [],
- "allow_rename": 1,
- "creation": "2024-07-18 20:30:57.628049",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "pamper",
-  "title",
-  "price",
-  "percentage",
-  "commission"
- ],
- "fields": [
-  {
-   "columns": 2,
-   "fieldname": "title",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Title"
-  },
-  {
-   "columns": 1,
-   "fieldname": "price",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Price",
-   "options": "currency"
-  },
-  {
-   "columns": 1,
-   "fieldname": "commission",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Commission",
-   "options": "currency"
-  },
-  {
-   "columns": 1,
-   "fieldname": "percentage",
-   "fieldtype": "Percent",
-   "in_list_view": 1,
-   "label": "Percentage"
-  },
-  {
-   "columns": 2,
-   "fieldname": "pamper",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Pamper",
-   "options": "Customer"
-  }
- ],
- "index_web_pages_for_search": 1,
- "istable": 1,
- "links": [],
- "modified": "2024-07-18 20:38:07.610399",
- "modified_by": "Administrator",
- "module": "Agricultural Marketing",
- "name": "Invoice Form Pamper Commission",
- "owner": "Administrator",
- "permissions": [],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": []
-}
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "naming_series:",
+    "creation": "2024-07-18 17:44:50.295646",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+     "section_break_main",
+     "naming_series",
+     "company",
+     "column_break_1",
+     "posting_date",
+     "posting_time",
+     "section_break_defaults",
+     "default_supplier",
+     "column_break_2",
+     "default_customer",
+     "default_pamper",
+     "section_break_items",
+     "items",
+     "section_break_actions",
+     "create_invoices_btn",
+     "amended_from"
+    ],
+    "fields": [
+     {
+      "fieldname": "section_break_main",
+      "fieldtype": "Section Break",
+      "label": "Main Details"
+     },
+     {
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Series",
+      "options": "BULK-INV-.YYYY.-",
+      "reqd": 1
+     },
+     {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Company",
+      "options": "Company",
+      "reqd": 1
+     },
+     {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+     },
+     {
+      "default": "Today",
+      "fieldname": "posting_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Date",
+      "reqd": 1
+     },
+     {
+      "default": "Now",
+      "fieldname": "posting_time",
+      "fieldtype": "Time",
+      "label": "Posting Time"
+     },
+     {
+      "fieldname": "section_break_defaults",
+      "fieldtype": "Section Break",
+      "label": "Default Values"
+     },
+     {
+      "fieldname": "default_supplier",
+      "fieldtype": "Link",
+      "label": "Default Supplier",
+      "options": "Supplier"
+     },
+     {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+     },
+     {
+      "fieldname": "default_customer",
+      "fieldtype": "Link",
+      "label": "Default Customer",
+      "options": "Customer"
+     },
+     {
+      "fieldname": "default_pamper",
+      "fieldtype": "Link",
+      "label": "Default Pamper",
+      "options": "Customer"
+     },
+     {
+      "fieldname": "section_break_items",
+      "fieldtype": "Section Break",
+      "label": "Items"
+     },
+     {
+      "fieldname": "items",
+      "fieldtype": "Table",
+      "label": "Items",
+      "options": "Bulk Invoice Form Item",
+      "reqd": 1
+     },
+     {
+      "fieldname": "section_break_actions",
+      "fieldtype": "Section Break",
+      "label": "Actions"
+     },
+     {
+      "fieldname": "create_invoices_btn",
+      "fieldtype": "Button",
+      "label": "Create Invoice Forms"
+     },
+     {
+      "fieldname": "amended_from",
+      "fieldtype": "Link",
+      "label": "Amended From",
+      "no_copy": 1,
+      "options": "Bulk Invoice Form",
+      "print_hide": 1,
+      "read_only": 1
+     }
+    ],
+    "index_web_pages_for_search": 1,
+    "is_submittable": 1,
+    "links": [],
+    "modified": "2025-07-15 12:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Agricultural Marketing",
+    "name": "Bulk Invoice Form",
+    "naming_rule": "By \"Naming Series\" field",
+    "owner": "Administrator",
+    "permissions": [
+     {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "submit": 1,
+      "write": 1
+     }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+   }

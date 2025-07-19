@@ -1,0 +1,799 @@
+# Copyright (c) 2024, Muhammad Salama and contributors
+# For license information, please see license.txt
+
+import frappe
+from frappe import _
+from frappe.model.document import Document
+from collections import defaultdict
+
+
+class BulkInvoiceForm(Document):
+    def before_save(self):
+        """Handle updates before saving with change detection"""
+        # Get the old document for comparison
+        old_doc = self.get_doc_before_save()
+        
+        # First calculate totals
+        self.calculate_totals()
+        
+        # Handle changes if there's an old document
+        if old_doc:
+            self.handle_item_changes(old_doc)
+        else:
+            # New document - auto-create invoice forms for items with suppliers
+            self.auto_create_invoice_forms_for_unlinked_items()
+        
+        # After handling all changes, ensure all items with suppliers have invoice forms
+        self.auto_create_invoice_forms_for_unlinked_items()
+    
+    def handle_item_changes(self, old_doc):
+        """Detect and handle changes in items table"""
+        # Create dictionaries for easy lookup
+        old_items = {item.name: item for item in old_doc.items}
+        current_items = {item.name: item for item in self.items}
+        
+        # Track which items were deleted
+        deleted_items = []
+        for old_item_name in old_items:
+            if old_item_name not in current_items:
+                deleted_items.append(old_items[old_item_name])
+        
+        # Handle deleted items
+        for deleted_item in deleted_items:
+            frappe.log_error(f"Item deleted: {deleted_item.name}", "Bulk Invoice Change Detection")
+            self.handle_item_deletion(deleted_item)
+        
+        # Track which items were modified or added
+        modified_items = []
+        new_items = []
+        
+        for current_item in self.items:
+            if current_item.name in old_items:
+                # Existing item - check if modified
+                old_item = old_items[current_item.name]
+                if self.item_has_changes(old_item, current_item):
+                    modified_items.append(current_item)
+                    frappe.log_error(f"Item modified: {current_item.name}", "Bulk Invoice Change Detection")
+            else:
+                # New item
+                new_items.append(current_item)
+                frappe.log_error(f"Item added: {current_item.name}", "Bulk Invoice Change Detection")
+        
+        # Handle modified items
+        for item in modified_items:
+            self.handle_item_modification(item, old_items[item.name])
+        
+        # Handle new items - automatically create/append to invoice forms
+        self.handle_new_items(new_items)
+    
+    def item_has_changes(self, old_item, current_item):
+        """Check if an item has meaningful changes"""
+        fields_to_check = [
+            'item_code', 'item_name', 'qty', 'price', 'total',
+            'supplier', 'customer', 'pamper'
+        ]
+        
+        for field in fields_to_check:
+            old_value = getattr(old_item, field, None)
+            current_value = getattr(current_item, field, None)
+            if old_value != current_value:
+                frappe.log_error(f"Field {field} changed from {old_value} to {current_value}", "Item Change Detection")
+                return True
+        
+        return False
+    
+    def handle_item_deletion(self, deleted_item):
+        """Handle deletion of an item"""
+        if deleted_item.reference_invoice_form:
+            try:
+                invoice_form = frappe.get_doc("Invoice Form", deleted_item.reference_invoice_form)
+                original_count = len(invoice_form.items)
+                
+                # Find and remove the item using multiple matching criteria
+                items_to_remove = []
+                for inv_item in invoice_form.items:
+                    if (inv_item.name == deleted_item.reference_invoice_form_item or 
+                        inv_item.bulk_invoice_item_reference == deleted_item.name):
+                        items_to_remove.append(inv_item)
+                
+                # Remove found items
+                for inv_item in items_to_remove:
+                    invoice_form.items.remove(inv_item)
+                
+                if len(invoice_form.items) == 0:
+                    # If no items left, delete the entire invoice form
+                    invoice_form.delete(force=1)
+                    frappe.log_error(f"Deleted Invoice Form {deleted_item.reference_invoice_form} as it had no items left", "Item Deletion")
+                else:
+                    # Recalculate totals and save
+                    invoice_form.run_method("calculate_totals")
+                    invoice_form.save()
+                    frappe.log_error(f"Removed item from Invoice Form {deleted_item.reference_invoice_form}", "Item Deletion")
+                
+            except Exception as e:
+                frappe.log_error(f"Error handling deletion of item {deleted_item.name}: {str(e)}", "Item Deletion Error")
+    
+    def handle_item_modification(self, current_item, old_item):
+        """Handle modification of an existing item"""
+        if not current_item.reference_invoice_form:
+            return
+        
+        try:
+            # Check if supplier changed
+            if old_item.supplier != current_item.supplier:
+                # Handle supplier change
+                self.handle_supplier_change_sync(current_item, None)
+            else:
+                # Update existing item in the same invoice form
+                self.sync_single_item(current_item)
+                
+        except Exception as e:
+            frappe.log_error(f"Error handling modification of item {current_item.name}: {str(e)}", "Item Modification Error")
+    
+    def sync_single_item(self, item):
+        """Sync a single item with its invoice form"""
+        if not item.reference_invoice_form:
+            return
+        
+        try:
+            invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+            
+            # Find and update the item
+            item_found = False
+            for inv_item in invoice_form.items:
+                if (inv_item.bulk_invoice_item_reference == item.name or 
+                    inv_item.name == item.reference_invoice_form_item):
+                    # Update the item with current values
+                    inv_item.item_code = item.item_code
+                    inv_item.item_name = item.item_name
+                    inv_item.qty = item.qty
+                    inv_item.price = item.price
+                    inv_item.total = item.total
+                    inv_item.customer = item.customer
+                    inv_item.pamper = item.pamper
+                    item_found = True
+                    break
+            
+            if item_found:
+                invoice_form.run_method("calculate_totals")
+                invoice_form.save()
+            else:
+                frappe.log_error(f"Could not find item {item.name} in invoice form {item.reference_invoice_form}", "Sync Error")
+                
+        except Exception as e:
+            frappe.log_error(f"Error syncing item {item.name}: {str(e)}", "Sync Error")
+                
+    def handle_new_items(self, new_items):
+        """Handle newly added items - automatically create or append to invoice forms"""
+        if not new_items:
+            return
+            
+        created_forms = []
+        updated_forms = []
+        
+        for item in new_items:
+            # Skip if item already has a reference (shouldn't happen for new items, but just in case)
+            if item.reference_invoice_form:
+                self.sync_single_item(item)
+                continue
+            
+            # Skip if item doesn't have a supplier
+            if not item.supplier:
+                frappe.log_error(f"New item {item.name} has no supplier, skipping auto-creation", "Auto Invoice Creation")
+                continue
+            
+            try:
+                # Find or create invoice form for this supplier
+                invoice_form = find_or_create_invoice_form(self, item.supplier)
+                
+                # Track if this is a new form
+                if invoice_form.name not in created_forms and invoice_form.name not in updated_forms:
+                    # Check if this invoice form was just created or already existed
+                    existing_items_count = 0
+                    for existing_item in invoice_form.items:
+                        if existing_item.bulk_invoice_reference != self.name:
+                            existing_items_count += 1
+                    
+                    if existing_items_count == 0:
+                        created_forms.append(invoice_form.name)
+                    else:
+                        updated_forms.append(invoice_form.name)
+                
+                # Add item to invoice form
+                invoice_item = invoice_form.append("items", {
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "qty": item.qty,
+                    "price": item.price,
+                    "total": item.total,
+                    "customer": item.customer,
+                    "pamper": item.pamper,
+                    "bulk_invoice_reference": self.name,
+                    "bulk_invoice_item_reference": item.name
+                })
+                
+                # Update references in bulk invoice item
+                item.reference_invoice_form = invoice_form.name
+                item.reference_invoice_form_item = invoice_item.name
+                
+                # Save the invoice form
+                invoice_form.save()
+                
+                frappe.log_error(f"Added new item {item.name} to Invoice Form {invoice_form.name}", "Auto Invoice Creation")
+                
+            except Exception as e:
+                frappe.log_error(f"Error auto-creating invoice for new item {item.name} with supplier {item.supplier}: {str(e)}", "Auto Invoice Creation Error")
+        
+        # Show user feedback for auto-created/updated forms
+        if created_forms or updated_forms:
+            messages = []
+            if created_forms:
+                messages.append(f"Auto-created {len(created_forms)} new Invoice Forms: {', '.join(created_forms)}")
+            if updated_forms:
+                messages.append(f"Auto-updated {len(updated_forms)} existing Invoice Forms: {', '.join(updated_forms)}")
+            
+            frappe.msgprint("<br>".join(messages), title="Auto Invoice Creation", indicator="green")
+    
+    def auto_create_invoice_forms_for_unlinked_items(self):
+        """Automatically create invoice forms for items without references"""
+        unlinked_items = [item for item in self.items if not item.reference_invoice_form and item.supplier]
+        
+        if unlinked_items:
+            frappe.log_error(f"Found {len(unlinked_items)} unlinked items, auto-creating invoice forms", "Auto Invoice Creation")
+            self.handle_new_items(unlinked_items)
+    
+        
+    def sync_with_invoice_forms(self):
+        """Sync changes with related invoice forms (legacy method)"""
+        for item in self.items:
+            if item.reference_invoice_form and item.reference_invoice_form_item:
+                self.sync_single_item(item)
+    
+    def handle_supplier_change_sync(self, item, old_invoice_form):
+        """Handle supplier change during sync"""
+        if not old_invoice_form and item.reference_invoice_form:
+            try:
+                old_invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+            except:
+                return
+        
+        if old_invoice_form:
+            # Remove item from old invoice form
+            old_invoice_form.items = [i for i in old_invoice_form.items 
+                                    if i.name != item.reference_invoice_form_item and 
+                                       i.bulk_invoice_item_reference != item.name]
+            
+            if len(old_invoice_form.items) == 0:
+                # Delete old invoice form if no items left
+                old_invoice_form.delete(force=1)
+            else:
+                old_invoice_form.save()
+        
+        # Find or create new invoice form for new supplier
+        new_invoice_form = find_or_create_invoice_form(self, item.supplier)
+        
+        # Add item to new invoice form
+        new_item = new_invoice_form.append("items", {
+            "item_code": item.item_code,
+            "item_name": item.item_name,
+            "qty": item.qty,
+            "price": item.price,
+            "total": item.total,
+            "customer": item.customer,
+            "pamper": item.pamper,
+            "bulk_invoice_reference": self.name,
+            "bulk_invoice_item_reference": item.name
+        })
+        
+        new_invoice_form.save()
+        
+        # Update references in bulk invoice
+        item.reference_invoice_form = new_invoice_form.name
+        item.reference_invoice_form_item = new_item.name
+        
+    def calculate_totals(self):
+        """Calculate totals for each item row"""
+        for item in self.items:
+            item.total = (item.qty or 0) * (item.price or 0)
+    
+    def on_submit(self):
+        """Handle submission - submit all related invoice forms"""
+        self.submit_related_invoice_forms()
+    
+    def submit_related_invoice_forms(self):
+        """Submit all invoice forms generated from this bulk invoice"""
+        submitted_forms = []
+        failed_forms = []
+        
+        # Get all unique invoice forms referenced by items
+        invoice_form_names = set()
+        for item in self.items:
+            if item.reference_invoice_form:
+                invoice_form_names.add(item.reference_invoice_form)
+        
+        for invoice_form_name in invoice_form_names:
+            try:
+                invoice_form = frappe.get_doc("Invoice Form", invoice_form_name)
+                
+                # Only submit if not already submitted
+                if invoice_form.docstatus == 0:
+                    invoice_form.submit()
+                    submitted_forms.append(invoice_form_name)
+                    frappe.log_error(f"Submitted Invoice Form: {invoice_form_name}", "Bulk Invoice Submission")
+                
+            except Exception as e:
+                failed_forms.append(invoice_form_name)
+                frappe.log_error(f"Failed to submit Invoice Form {invoice_form_name}: {str(e)}", "Submission Error")
+        
+        # Show results
+        if submitted_forms:
+            frappe.msgprint(_("Successfully submitted {0} Invoice Forms: {1}").format(
+                len(submitted_forms), ", ".join(submitted_forms)
+            ))
+        
+        if failed_forms:
+            frappe.msgprint(_("Failed to submit {0} Invoice Forms: {1}").format(
+                len(failed_forms), ", ".join(failed_forms)
+            ), indicator="red")
+    
+    def on_cancel(self):
+        """Handle cancellation - cancel all related invoice forms"""
+        self.cancel_related_invoice_forms()
+    
+    def cancel_related_invoice_forms(self):
+        """Cancel all invoice forms generated from this bulk invoice"""
+        cancelled_forms = []
+        failed_forms = []
+        
+        # Get all unique invoice forms referenced by items
+        invoice_form_names = set()
+        for item in self.items:
+            if item.reference_invoice_form:
+                invoice_form_names.add(item.reference_invoice_form)
+        
+        for invoice_form_name in invoice_form_names:
+            try:
+                invoice_form = frappe.get_doc("Invoice Form", invoice_form_name)
+                
+                # Only cancel if submitted
+                if invoice_form.docstatus == 1:
+                    invoice_form.cancel()
+                    cancelled_forms.append(invoice_form_name)
+                    frappe.log_error(f"Cancelled Invoice Form: {invoice_form_name}", "Bulk Invoice Cancellation")
+                
+            except Exception as e:
+                failed_forms.append(invoice_form_name)
+                frappe.log_error(f"Failed to cancel Invoice Form {invoice_form_name}: {str(e)}", "Cancellation Error")
+        
+        # Show results
+        if cancelled_forms:
+            frappe.msgprint(_("Successfully cancelled {0} Invoice Forms: {1}").format(
+                len(cancelled_forms), ", ".join(cancelled_forms)
+            ))
+        
+        if failed_forms:
+            frappe.msgprint(_("Failed to cancel {0} Invoice Forms: {1}").format(
+                len(failed_forms), ", ".join(failed_forms)
+            ), indicator="red")
+    
+    @frappe.whitelist()
+    def create_invoice_forms(self):
+        """Create Invoice Forms grouped by supplier"""
+        if not self.items:
+            frappe.throw(_("No items to create invoices from"))
+        
+        # Group items by supplier, but only for items without existing references
+        supplier_items = defaultdict(list)
+        existing_invoice_forms = {}
+        
+        for item in self.items:
+            if not item.reference_invoice_form:
+                # Item doesn't have a reference, needs to be added to an invoice form
+                supplier_items[item.supplier].append(item)
+            else:
+                # Item already has a reference, track the existing invoice form
+                if item.supplier not in existing_invoice_forms:
+                    try:
+                        existing_invoice_forms[item.supplier] = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+                    except:
+                        # Invoice form might have been deleted, treat as new item
+                        supplier_items[item.supplier].append(item)
+        
+        created_invoices = []
+        updated_invoices = []
+        
+        for supplier, items in supplier_items.items():
+            try:
+                # Check if there's already an invoice form for this supplier
+                if supplier in existing_invoice_forms:
+                    # Use existing invoice form
+                    invoice_form = existing_invoice_forms[supplier]
+                else:
+                    # Find or create invoice form for this supplier
+                    invoice_form = find_or_create_invoice_form(self, supplier)
+                    if invoice_form.name not in created_invoices:
+                        created_invoices.append(invoice_form.name)
+                
+                # Add items to invoice form
+                for item in items:
+                    invoice_item = invoice_form.append("items", {
+                        "item_code": item.item_code,
+                        "item_name": item.item_name,
+                        "qty": item.qty,
+                        "price": item.price,
+                        "total": item.total,
+                        "customer": item.customer,
+                        "pamper": item.pamper,
+                        "bulk_invoice_reference": self.name,
+                        "bulk_invoice_item_reference": item.name
+                    })
+                    
+                    # Update references in bulk invoice items
+                    item.reference_invoice_form = invoice_form.name
+                    item.reference_invoice_form_item = invoice_item.name
+                
+                # Save the invoice form
+                invoice_form.save()
+                
+                if invoice_form.name not in created_invoices:
+                    updated_invoices.append(invoice_form.name)
+                
+            except Exception as e:
+                frappe.log_error(f"Error creating/updating invoice for supplier {supplier}: {str(e)}")
+                frappe.throw(_("Error creating invoice for supplier {0}: {1}").format(supplier, str(e)))
+        
+        # Save the bulk invoice form with updated references
+        self.save()
+        
+        # Build result message
+        messages = []
+        if created_invoices:
+            messages.append(_("Created {0} new Invoice Forms: {1}").format(
+                len(created_invoices), ", ".join(created_invoices)
+            ))
+        if updated_invoices:
+            messages.append(_("Updated {0} existing Invoice Forms: {1}").format(
+                len(updated_invoices), ", ".join(updated_invoices)
+            ))
+        
+        if messages:
+            frappe.msgprint("<br>".join(messages))
+        else:
+            frappe.msgprint(_("All items already have Invoice Form references"))
+        
+        return created_invoices + updated_invoices
+
+    def on_trash(self):
+        """Handle bulk invoice deletion"""
+        # Clean up related invoice forms
+        for item in self.items:
+            if item.reference_invoice_form:
+                try:
+                    invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+                    
+                    # Remove items that reference this bulk invoice
+                    invoice_form.items = [i for i in invoice_form.items 
+                                        if i.bulk_invoice_reference != self.name]
+                    
+                    if len(invoice_form.items) == 0:
+                        # Delete invoice form if no items left
+                        invoice_form.delete(force=1)
+                    else:
+                        # Clear the bulk invoice references
+                        for inv_item in invoice_form.items:
+                            inv_item.bulk_invoice_reference = None
+                            inv_item.bulk_invoice_item_reference = None
+                        invoice_form.save()
+                        
+                except Exception as e:
+                    frappe.log_error(f"Error cleaning up invoice form {item.reference_invoice_form}: {str(e)}")
+
+
+# Existing helper functions remain the same...
+
+@frappe.whitelist()
+def handle_item_update(bulk_invoice_name, item_idx, updated_data):
+    """Handle item update with supplier change detection"""
+    if isinstance(updated_data, str):
+        import json
+        updated_data = json.loads(updated_data)
+    
+    try:
+        bulk_invoice = frappe.get_doc("Bulk Invoice Form", bulk_invoice_name)
+        item = bulk_invoice.items[int(item_idx)]
+        
+        if not item.reference_invoice_form:
+            return {"success": False, "message": "No reference invoice form found"}
+        
+        # Store old supplier to detect changes
+        old_supplier = None
+        if item.reference_invoice_form:
+            try:
+                old_invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+                old_supplier = old_invoice_form.supplier
+            except:
+                pass
+        
+        # Update the bulk invoice item first
+        item.item_code = updated_data.get("item_code", item.item_code)
+        item.item_name = updated_data.get("item_name", item.item_name)
+        item.qty = updated_data.get("qty", item.qty)
+        item.price = updated_data.get("price", item.price)
+        item.total = (item.qty or 0) * (item.price or 0)  # Recalculate total
+        item.supplier = updated_data.get("supplier", item.supplier)
+        item.customer = updated_data.get("customer", item.customer)
+        item.pamper = updated_data.get("pamper", item.pamper)
+        
+        supplier_changed = False
+        
+        # Check if supplier changed
+        if old_supplier and old_supplier != item.supplier:
+            supplier_changed = True
+            # Handle supplier change - move item to different invoice form
+            result = move_item_to_different_supplier(bulk_invoice, item, old_supplier)
+            if not result.get("success", True):
+                return result
+        else:
+            # Update existing item in the same invoice form
+            result = update_item_in_same_invoice(bulk_invoice, item)
+            if not result.get("success", True):
+                return result
+        
+        # Save the bulk invoice after updating
+        bulk_invoice.save()
+        
+        message = "Item updated successfully"
+        if supplier_changed:
+            message += f" and moved to Invoice Form {item.reference_invoice_form}"
+        
+        return {
+            "success": True, 
+            "message": message,
+            "supplier_changed": supplier_changed
+        }
+        
+    except Exception as e:
+        frappe.log_error(f"Error updating item: {str(e)}", "Bulk Invoice Item Update")
+        return {"success": False, "message": str(e)}
+
+
+@frappe.whitelist()
+def handle_item_action(bulk_invoice_name, item_idx, action_type):
+    """Handle actions on bulk invoice items"""
+    bulk_invoice = frappe.get_doc("Bulk Invoice Form", bulk_invoice_name)
+    item = bulk_invoice.items[int(item_idx)]
+    
+    if action_type == "delete":
+        return delete_item(bulk_invoice, item)
+    elif action_type == "edit":
+        return edit_item(bulk_invoice, item)
+    
+    return {"success": False, "message": "Invalid action"}
+
+
+def delete_item(bulk_invoice, item):
+    """Delete item from bulk invoice and handle references"""
+    try:
+        message = "Item deleted successfully"
+        
+        if item.reference_invoice_form:
+            invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+            original_count = len(invoice_form.items)
+            
+            # Find and remove the item using multiple matching criteria
+            items_to_remove = []
+            for inv_item in invoice_form.items:
+                # Try multiple ways to match the item
+                if (inv_item.name == item.reference_invoice_form_item or 
+                    inv_item.bulk_invoice_item_reference == item.name):
+                    items_to_remove.append(inv_item)
+            
+            # Remove found items
+            for inv_item in items_to_remove:
+                invoice_form.items.remove(inv_item)
+            
+            if len(invoice_form.items) == 0:
+                # If no items left, delete the entire invoice form
+                invoice_form.delete(force=1)
+                message = f"Deleted Invoice Form {item.reference_invoice_form} as it had only one item"
+            else:
+                # Recalculate totals and save
+                invoice_form.run_method("calculate_totals")
+                invoice_form.save()
+                message = f"Removed item from Invoice Form {item.reference_invoice_form}"
+                
+            frappe.log_error(f"Deleted {len(items_to_remove)} items from invoice form. Original count: {original_count}, New count: {len(invoice_form.items)}", "Delete Item Debug")
+        
+        return {"success": True, "message": message}
+        
+    except Exception as e:
+        frappe.log_error(f"Error deleting item: {str(e)}")
+        return {"success": False, "message": str(e)}
+
+
+def edit_item(bulk_invoice, item):
+    """Handle item editing logic"""
+    try:
+        if not item.reference_invoice_form:
+            return {"success": False, "message": "No reference invoice form found"}
+        
+        # This function should be called after the item is already updated
+        # We need to sync the changes to the invoice form
+        return update_item_in_same_invoice(bulk_invoice, item)
+            
+    except Exception as e:
+        frappe.log_error(f"Error editing item: {str(e)}")
+        return {"success": False, "message": str(e)}
+
+
+def move_item_to_different_supplier(bulk_invoice, item, old_supplier):
+    """Move item to different supplier's invoice form"""
+    try:
+        # Remove from old invoice form
+        old_invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+        old_invoice_form.items = [i for i in old_invoice_form.items if i.name != item.reference_invoice_form_item]
+        
+        if len(old_invoice_form.items) == 0:
+            # Delete old invoice form if no items left
+            old_invoice_form.delete(force=1)
+        else:
+            old_invoice_form.save()
+        
+        # Find or create new invoice form for new supplier
+        new_invoice_form = find_or_create_invoice_form(bulk_invoice, item.supplier)
+        
+        # Add item to new invoice form
+        new_item = new_invoice_form.append("items", {
+            "item_code": item.item_code,
+            "item_name": item.item_name,
+            "qty": item.qty,
+            "price": item.price,
+            "total": item.total,
+            "customer": item.customer,
+            "pamper": item.pamper,
+            "bulk_invoice_reference": bulk_invoice.name,
+            "bulk_invoice_item_reference": item.name
+        })
+        
+        new_invoice_form.save()
+        
+        # Update references in bulk invoice
+        item.reference_invoice_form = new_invoice_form.name
+        item.reference_invoice_form_item = new_item.name
+        
+        return {"success": True, "message": f"Item moved to Invoice Form {new_invoice_form.name}"}
+        
+    except Exception as e:
+        frappe.log_error(f"Error moving item: {str(e)}")
+        return {"success": False, "message": str(e)}
+
+
+def update_item_in_same_invoice(bulk_invoice, item):
+    """Update item in the same invoice form"""
+    try:
+        invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+        
+        # Find and update the item using bulk_invoice_item_reference
+        item_found = False
+        for inv_item in invoice_form.items:
+            # Match using bulk_invoice_item_reference which should be the bulk item's name
+            if inv_item.bulk_invoice_item_reference == item.name:
+                inv_item.item_code = item.item_code
+                inv_item.item_name = item.item_name
+                inv_item.qty = item.qty
+                inv_item.price = item.price
+                inv_item.total = item.total
+                inv_item.customer = item.customer
+                inv_item.pamper = item.pamper
+                item_found = True
+                break
+        
+        if not item_found:
+            # Fallback: try matching by reference_invoice_form_item
+            for inv_item in invoice_form.items:
+                if inv_item.name == item.reference_invoice_form_item:
+                    inv_item.item_code = item.item_code
+                    inv_item.item_name = item.item_name
+                    inv_item.qty = item.qty
+                    inv_item.price = item.price
+                    inv_item.total = item.total
+                    inv_item.customer = item.customer
+                    inv_item.pamper = item.pamper
+                    item_found = True
+                    break
+        
+        if not item_found:
+            frappe.log_error(f"Could not find item to update in invoice form {item.reference_invoice_form}")
+            return {"success": False, "message": "Could not find item to update in invoice form"}
+        
+        # Calculate totals in invoice form
+        invoice_form.run_method("calculate_totals")
+        
+        # Save the invoice form
+        invoice_form.save()
+        
+        return {"success": True, "message": f"Item updated in Invoice Form {item.reference_invoice_form}"}
+        
+    except Exception as e:
+        frappe.log_error(f"Error updating item in invoice form: {str(e)}")
+        return {"success": False, "message": str(e)}
+
+
+def find_or_create_invoice_form(bulk_invoice, supplier):
+    """Find existing invoice form for supplier or create new one"""
+    # First check if there's already an invoice form for this supplier from this bulk invoice
+    existing_invoice_form = None
+    
+    # Look through all items in the bulk invoice to find existing invoice forms for this supplier
+    for item in bulk_invoice.items:
+        if item.supplier == supplier and item.reference_invoice_form:
+            try:
+                # Verify the invoice form still exists and has the correct supplier
+                invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
+                if invoice_form.supplier == supplier:
+                    existing_invoice_form = invoice_form
+                    break
+            except:
+                # Invoice form might have been deleted, continue searching
+                continue
+    
+    if existing_invoice_form:
+        frappe.log_error(f"Found existing invoice form {existing_invoice_form.name} for supplier {supplier}", "Find Invoice Form")
+        return existing_invoice_form
+    
+    # Check if there's any other draft invoice form for this supplier from other bulk invoices
+    # This allows appending to existing invoice forms from different bulk invoices
+    try:
+        existing_draft_invoices = frappe.get_all("Invoice Form", 
+            filters={
+                "supplier": supplier,
+                "docstatus": 0,  # Only draft invoices
+                "company": bulk_invoice.company
+            },
+            fields=["name"],
+            limit=1
+        )
+        
+        if existing_draft_invoices:
+            existing_form = frappe.get_doc("Invoice Form", existing_draft_invoices[0].name)
+            frappe.log_error(f"Found existing draft invoice form {existing_form.name} for supplier {supplier} from other bulk invoices", "Find Invoice Form")
+            return existing_form
+            
+    except Exception as e:
+        frappe.log_error(f"Error searching for existing invoice forms: {str(e)}", "Find Invoice Form Error")
+    
+    # If no existing invoice form found, create a new one
+    frappe.log_error(f"Creating new invoice form for supplier {supplier}", "Create Invoice Form")
+    invoice_form = frappe.new_doc("Invoice Form")
+    
+    invoice_form.update({
+        "company": bulk_invoice.company,
+        "posting_date": bulk_invoice.posting_date,
+        "posting_time": bulk_invoice.posting_time,
+        "supplier": supplier,
+    })
+    
+    invoice_form.insert(ignore_permissions=True, ignore_mandatory=True)
+    bulk_invoice.last_invoice_sequence = invoice_form.name
+    return invoice_form
+
+
+@frappe.whitelist()
+def create_bulk_invoice_from_items(items_data, company, posting_date=None):
+    """Create a bulk invoice form from item data"""
+    if isinstance(items_data, str):
+        import json
+        items_data = json.loads(items_data)
+    
+    bulk_invoice = frappe.new_doc("Bulk Invoice Form")
+    bulk_invoice.update({
+        "company": company,
+        "posting_date": posting_date or frappe.utils.today(),
+        "posting_time": frappe.utils.nowtime()
+    })
+    
+    for item_data in items_data:
+        bulk_invoice.append("items", item_data)
+    
+    bulk_invoice.insert(ignore_permissions=True)
+    return bulk_invoice.name

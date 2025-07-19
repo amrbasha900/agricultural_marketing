@@ -1,129 +1,163 @@
 {
- "actions": [],
- "allow_rename": 1,
- "autoname": "hash",
- "creation": "2024-07-18 18:36:54.426488",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "item_code",
-  "column_break_wyrr",
-  "item_name",
-  "section_break_oxgx",
-  "qty",
-  "price",
-  "column_break_ehhp",
-  "total",
-  "commission",
-  "section_break_horw",
-  "customer",
-  "column_break_dugc",
-  "pamper"
- ],
- "fields": [
-  {
-   "bold": 1,
-   "columns": 2,
-   "fieldname": "item_code",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Item",
-   "options": "Item"
-  },
-  {
-   "fieldname": "column_break_wyrr",
-   "fieldtype": "Column Break"
-  },
-  {
-   "bold": 1,
-   "fetch_from": "item_code.item_name",
-   "fieldname": "item_name",
-   "fieldtype": "Data",
-   "label": "Item Name",
-   "reqd": 1
-  },
-  {
-   "fieldname": "section_break_oxgx",
-   "fieldtype": "Section Break"
-  },
-  {
-   "bold": 1,
-   "columns": 1,
-   "fieldname": "qty",
-   "fieldtype": "Float",
-   "in_list_view": 1,
-   "label": "Quantity",
-   "reqd": 1
-  },
-  {
-   "fieldname": "column_break_ehhp",
-   "fieldtype": "Column Break"
-  },
-  {
-   "columns": 1,
-   "fieldname": "price",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Price",
-   "options": "currency",
-   "reqd": 1
-  },
-  {
-   "columns": 1,
-   "fieldname": "total",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Total",
-   "options": "currency",
-   "read_only": 1
-  },
-  {
-   "fieldname": "section_break_horw",
-   "fieldtype": "Section Break"
-  },
-  {
-   "columns": 2,
-   "fieldname": "customer",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Customer",
-   "options": "Customer",
-   "reqd": 1
-  },
-  {
-   "fieldname": "column_break_dugc",
-   "fieldtype": "Column Break"
-  },
-  {
-   "columns": 2,
-   "fieldname": "pamper",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Pamper",
-   "options": "Customer"
-  },
-  {
-   "columns": 1,
-   "fieldname": "commission",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Commission",
-   "options": "currency",
-   "read_only": 1
-  }
- ],
- "index_web_pages_for_search": 1,
- "istable": 1,
- "links": [],
- "modified": "2024-10-09 15:04:06.058709",
- "modified_by": "Administrator",
- "module": "Agricultural Marketing",
- "name": "Invoice Form Item",
- "naming_rule": "Random",
- "owner": "Administrator",
- "permissions": [],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": []
-}
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "hash",
+    "creation": "2024-07-18 18:36:54.426488",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+     "item_code",
+     "column_break_wyrr",
+     "item_name",
+     "section_break_oxgx",
+     "qty",
+     "price",
+     "column_break_ehhp",
+     "total",
+     "commission",
+     "section_break_horw",
+     "customer",
+     "column_break_dugc",
+     "pamper",
+     "section_break_references",
+     "bulk_invoice_reference",
+     "column_break_ref",
+     "bulk_invoice_item_reference",
+     "has_commission_invoice"
+    ],
+    "fields": [
+     {
+      "bold": 1,
+      "columns": 2,
+      "fieldname": "item_code",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Item",
+      "options": "Item"
+     },
+     {
+      "fieldname": "column_break_wyrr",
+      "fieldtype": "Column Break"
+     },
+     {
+      "bold": 1,
+      "fetch_from": "item_code.item_name",
+      "fieldname": "item_name",
+      "fieldtype": "Data",
+      "label": "Item Name",
+      "reqd": 1
+     },
+     {
+      "fieldname": "section_break_oxgx",
+      "fieldtype": "Section Break"
+     },
+     {
+      "bold": 1,
+      "columns": 1,
+      "fieldname": "qty",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Quantity",
+      "reqd": 1
+     },
+     {
+      "fieldname": "column_break_ehhp",
+      "fieldtype": "Column Break"
+     },
+     {
+      "columns": 1,
+      "fieldname": "price",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Price",
+      "options": "currency",
+      "reqd": 1
+     },
+     {
+      "columns": 1,
+      "fieldname": "total",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Total",
+      "options": "currency",
+      "read_only": 1
+     },
+     {
+      "fieldname": "section_break_horw",
+      "fieldtype": "Section Break"
+     },
+     {
+      "columns": 2,
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Customer",
+      "options": "Customer",
+      "reqd": 1
+     },
+     {
+      "fieldname": "column_break_dugc",
+      "fieldtype": "Column Break"
+     },
+     {
+      "columns": 2,
+      "fieldname": "pamper",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Pamper",
+      "options": "Customer"
+     },
+     {
+      "columns": 1,
+      "fieldname": "commission",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Commission",
+      "options": "currency",
+      "read_only": 1
+     },
+     {
+      "fieldname": "section_break_references",
+      "fieldtype": "Section Break",
+      "label": "References"
+     },
+     {
+      "fieldname": "bulk_invoice_reference",
+      "fieldtype": "Link",
+      "label": "Bulk Invoice Reference",
+      "options": "Bulk Invoice Form",
+      "read_only": 1
+     },
+     {
+      "fieldname": "column_break_ref",
+      "fieldtype": "Column Break"
+     },
+     {
+      "fieldname": "bulk_invoice_item_reference",
+      "fieldtype": "Data",
+      "label": "Bulk Invoice Item Reference",
+      "read_only": 1
+     },
+     {
+      "default": "0",
+      "fieldname": "has_commission_invoice",
+      "fieldtype": "Check",
+      "label": "Has Commission Invoice",
+      "read_only": 1
+     }
+    ],
+    "index_web_pages_for_search": 1,
+    "istable": 1,
+    "links": [],
+    "modified": "2025-07-15 12:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Agricultural Marketing",
+    "name": "Invoice Form Item",
+    "naming_rule": "Random",
+    "owner": "Administrator",
+    "permissions": [],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+   }
