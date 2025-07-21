@@ -236,6 +236,7 @@ fixtures = [
     {"dt": "Custom Field", "filters": [["name", "in", [
         "Customer-custom_send_invoice_via_whatsapp",
         "Supplier-custom_send_invoice_via_whatsapp",
-        "Item-custom_is_agriculture_item"
+        "Item-custom_is_agriculture_item",
+        "Supplier-custom_is_farmer"
         ]]]},
 ]

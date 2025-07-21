@@ -146,6 +146,14 @@ frappe.ui.form.on("Invoice Form Pamper Commission", {
 
 
 function filter_basic_info_fields(frm) {
+    frm.set_query("supplier", function () {
+        return {
+            filters: {
+                is_farmer: 1,
+            },
+        };
+    });
+
     frm.set_query("customer", function () {
         return {
             filters: {

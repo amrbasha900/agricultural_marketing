@@ -3,9 +3,8 @@
 
 frappe.ui.form.on("Bulk Invoice Form", {
     refresh(frm) {
-        // frm.set_df_property('items', 'cannot_delete_rows', true); // Hide delete button
-        // frm.set_df_property('items', 'cannot_delete_all_rows', true); // Hide delete all button
-       
+        
+
         // Initialize original suppliers storage
         initialize_original_suppliers(frm);
         
@@ -270,7 +269,7 @@ function setup_filters(frm) {
     frm.set_query("default_supplier", function() {
         return {
             filters: {
-                is_frozen: 0
+                is_farmer: 1
             }
         };
     });
@@ -308,7 +307,7 @@ function setup_child_table_filters(frm) {
         frm.fields_dict['items'].grid.get_field("supplier").get_query = function() {
             return {
                 filters: {
-                    is_frozen: 0
+                    is_farmer: 1
                 }
             };
         };
