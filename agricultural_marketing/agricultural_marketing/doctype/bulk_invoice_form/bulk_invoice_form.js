@@ -23,6 +23,13 @@ frappe.ui.form.on("Bulk Invoice Form", {
     onload(frm) {
         // Also set up filters on load
         setup_filters(frm);
+        if (frm.is_new()) {
+            // Change `items` to your actual child table fieldname
+            if (frm.doc.items && frm.doc.items.length > 0) {
+                frm.doc.items.splice(0, 1); // remove first row
+                frm.refresh_field('items'); // refresh UI
+            }
+        }
     },
     
     default_supplier: function(frm) {
