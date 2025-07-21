@@ -21,7 +21,9 @@
   "items",
   "section_break_actions",
   "bulk_invoice_reference",
-  "amended_from"
+  "amended_from",
+  "column_break_wkwg",
+  "notes"
  ],
  "fields": [
   {
@@ -119,12 +121,21 @@
    "fieldname": "bulk_invoice_reference",
    "fieldtype": "Data",
    "label": "Bulk Invoice Reference"
+  },
+  {
+   "fieldname": "column_break_wkwg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-07-20 08:48:03.757639",
+ "modified": "2025-07-21 18:44:38.343809",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Bulk Invoice Form",
