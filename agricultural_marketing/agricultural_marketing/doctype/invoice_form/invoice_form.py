@@ -14,7 +14,7 @@ from settings_manager.utils.data import money_in_words
 class InvoiceForm(Document):
     settings = frappe.get_single("Agriculture Settings")
 
-    if settings:
+    if settings.get("pos_profile") != None:
         pos_profile = frappe.get_doc("POS Profile", settings.get("pos_profile"))
     customer_commission_invoice_refs = []
 
