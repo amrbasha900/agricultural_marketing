@@ -7,16 +7,16 @@
  "engine": "InnoDB",
  "field_order": [
   "section_break_main",
-  "naming_series",
   "company",
+  "default_supplier",
   "column_break_1",
   "posting_date",
-  "posting_time",
-  "section_break_defaults",
-  "default_supplier",
-  "column_break_2",
   "default_customer",
+  "column_break_ekos",
+  "posting_time",
   "default_pamper",
+  "column_break_ybqq",
+  "naming_series",
   "section_break_items",
   "items",
   "section_break_actions",
@@ -27,6 +27,7 @@
  ],
  "fields": [
   {
+   "collapsible": 1,
    "fieldname": "section_break_main",
    "fieldtype": "Section Break",
    "label": "Main Details"
@@ -65,19 +66,10 @@
    "label": "Posting Time"
   },
   {
-   "fieldname": "section_break_defaults",
-   "fieldtype": "Section Break",
-   "label": "Default Values"
-  },
-  {
    "fieldname": "default_supplier",
    "fieldtype": "Link",
    "label": "Default Supplier",
    "options": "Supplier"
-  },
-  {
-   "fieldname": "column_break_2",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "default_customer",
@@ -130,12 +122,20 @@
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
+  },
+  {
+   "fieldname": "column_break_ekos",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ybqq",
+   "fieldtype": "Column Break"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-07-21 18:44:38.343809",
+ "modified": "2025-07-26 00:25:32.758530",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Bulk Invoice Form",

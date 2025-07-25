@@ -41,6 +41,7 @@ def get_invoices(filters):
             inv_form.has_supplier_commission_invoice,
             inv_form.grand_total,
             inv_frm_comm.commission,
+            inv_frm_comm.total_commission,
             inv_form.total_commissions_and_taxes
         )
         .where(inv_form.has_supplier_commission_invoice == 0)
@@ -69,8 +70,13 @@ def get_invoices(filters):
             for invoice in invoices:
                 current_supplier = invoice["supplier"]
                 ##supplier_commission = get_supplier_commission_percentage(current_supplier)
-                supplier_commission = invoice.get("commission", 0)
-                invoice["total"] = (supplier_commission * invoice["grand_total"]) / 100
+
+               ## supplier_commission = invoice.get("commission", 0)
+                ## invoice["total"] = (supplier_commission * invoice["grand_total"]) / 100
+
+                supplier_commission = invoice.get("total_commission", 0)
+                invoice["total"] = supplier_commission
+
                 if current_supplier in parties:
                     data[current_supplier].append(invoice)
                 else:

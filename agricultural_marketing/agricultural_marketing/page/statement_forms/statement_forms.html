@@ -46,27 +46,31 @@
 {% endif %}
 <table class="header-details" style="border:none;direction:rtl;">
     <tbody>
-    <tr style="border:none;">
-        <td style="border:none; width:50%;text-align:center;direction:rtl;">
-            <h4>
-                {{ _("كشف حساب مفصل") }} - {{ _("الاصناف") }}
-                <br>
-                {% if is_supplier %}
-                {{ _("اسم المورد") }}
-                {% else %}
-                {{ _("اسم العميل") }}
-                {% endif %} : {{header.party }}
-            </h4>
-        </td>
-        <td
-                style="border:none; width:50%;text-align:center;direction:rtl;">
-            <h4>
-                {{ _("تاريخ الطباعة") }} :{{ frappe.utils.getdate(frappe.utils.nowdate()) }}
-                <br>
-                {{ _("وقت الطباعة") }} :{{ frappe.utils.get_time_str(frappe.utils.now()) }}
-            </h4>
-        </td>
-    </tr>
+        <tr style="border:none;">
+            <td colspan="2" style="border:none; width:100%; text-align:center; direction:rtl; white-space:nowrap;">
+                <div style="display: flex; justify-content: space-around; align-items: center; width: 100%; flex-wrap: nowrap;">
+                    {% if is_supplier %} 
+                        <span style="margin: 0 20px; white-space: nowrap;">
+                            {{ _("اسم المورد") }} : {{frappe.db.get_value("Supplier", header.party, "supplier_name") }}
+                        </span>
+                        {% if frappe.db.get_single_value("Agriculture Settings", "show_supplier_code_in_pdf") %}
+                        <span style="margin: 0 20px; white-space: nowrap; direction:rtl;">
+                            {{ _("كود المورد") }} : {{header.party }}
+                        </span>
+                        {% endif %}
+                    {% else %}
+                        <span style="margin: 0 20px; white-space: nowrap;">
+                            {{ _("Customer Name") }} : {{frappe.db.get_value("Customer", header.party, "customer_name") }}
+                        </span>
+                        {% if frappe.db.get_single_value("Agriculture Settings", "show_customer_code_in_pdf") %}
+                        <span style="margin: 0 20px; white-space: nowrap; direction:rtl;">
+                            {{ _("كود العميل") }} : {{header.party }}
+                        </span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
     </tbody>
 </table>
 <hr>

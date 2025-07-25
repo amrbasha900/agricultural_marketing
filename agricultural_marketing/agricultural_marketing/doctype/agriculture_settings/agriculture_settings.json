@@ -15,6 +15,7 @@
   "hide_decimal",
   "customer_commission_percentage",
   "supplier_commission_item",
+  "commission_based_on",
   "column_break_nyvz",
   "commission_item",
   "pos_profile",
@@ -22,6 +23,8 @@
   "font_size",
   "report_note",
   "title_of_supplier_invoice_in_pdf",
+  "show_supplier_code_in_pdf",
+  "show_customer_code_in_pdf",
   "pamper_section",
   "active_pamper_commission",
   "pamper_commission",
@@ -167,13 +170,31 @@
    "fieldname": "title_of_supplier_invoice_in_pdf",
    "fieldtype": "Data",
    "label": "Title of Supplier Invoice in PDF"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_supplier_code_in_pdf",
+   "fieldtype": "Check",
+   "label": "Show Supplier Code In PDF"
+  },
+  {
+   "fieldname": "commission_based_on",
+   "fieldtype": "Select",
+   "label": "Commission Based On",
+   "options": "Supplier\nItem"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_customer_code_in_pdf",
+   "fieldtype": "Check",
+   "label": "Show Customer Code In PDF"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-06-29 15:50:00.434534",
+ "modified": "2025-07-24 16:35:48.294085",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",

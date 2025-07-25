@@ -74,7 +74,27 @@
     <thead>
     <tr>
         <th colspan="7">
-            {% if is_supplier %} {{ _(" Supplier Name") }} {% else %} {{ _("Customer Name") }} {% endif %} : {{ party }}
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                {% if is_supplier %} 
+                <div style="flex: 1; text-align: center;">
+                    {{ _("اسم المورد") }} : {{frappe.db.get_value("Supplier", party, "supplier_name") }}
+                </div>
+                {% if frappe.db.get_single_value("Agriculture Settings", "show_supplier_code_in_pdf") %}
+                <div style="flex: 1; text-align: center;">
+                        <div style="direction:rtl">{{ _("كود المورد") }} : {{party }}</div> 
+                </div>
+                {% endif %}
+                {% else %}
+                <div style="flex: 1; text-align: center;">
+                    {{ _("Customer Name") }} : {{frappe.db.get_value("Customer", party, "customer_name") }}
+                </div>
+                {% if frappe.db.get_single_value("Agriculture Settings", "show_customer_code_in_pdf") %}
+                <div style="flex: 1; text-align: center;">
+                        <div style="direction:rtl">{{ _("كود العميل") }} : {{party }}</div> 
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
         </th>
     </tr>
     <tr>

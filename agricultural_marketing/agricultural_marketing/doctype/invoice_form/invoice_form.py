@@ -62,26 +62,62 @@ class InvoiceForm(Document):
         supplier_commission_item = self.settings.get("supplier_commission_item")
         if supplier_commission_item:
             self.set("commissions", [])
-            supplier_commission_percentage = get_supplier_commission_percentage(self.supplier)
-
+            commission_base = self.settings.get("commission_based_on")
+            self.set("commissions", [])
+            commission_base = self.settings.get("commission_based_on")
             default_tax_template = get_tax_template(self)
-            tax_rate = frappe.db.get_value("Sales Taxes and Charges",
-                                           {"parent": default_tax_template}, "rate") or 0
+            tax_rate = frappe.db.get_value("Sales Taxes and Charges", {"parent": default_tax_template}, "rate") or 0
 
-            commission_amount = (self.grand_total * supplier_commission_percentage) / 100
-            tax_amount = (commission_amount * tax_rate) / 100
-            commission_total_with_taxes = commission_amount + tax_amount
-            self.append("commissions", {
-                "item": supplier_commission_item,
-                "price": self.grand_total,
-                "commission": supplier_commission_percentage,
-                "taxes": tax_rate,
-                "commission_total": commission_total_with_taxes
-            })
-            self.total_commissions_and_taxes = commission_total_with_taxes
-            for item in self.items:
-                item.commission = (item.total * supplier_commission_percentage) / 100
+            if commission_base == 'Supplier':
+                supplier_commission_percentage = get_supplier_commission_percentage(self.supplier)
 
+                default_tax_template = get_tax_template(self)
+                tax_rate = frappe.db.get_value("Sales Taxes and Charges",
+                                            {"parent": default_tax_template}, "rate") or 0
+
+                commission_amount = (self.grand_total * supplier_commission_percentage) / 100
+                tax_amount = (commission_amount * tax_rate) / 100
+                commission_total_with_taxes = commission_amount + tax_amount
+                total_commission_amount = 0
+                for item in self.items:
+                    item.commission = (item.total * supplier_commission_percentage) / 100
+                    total_commission_amount += (item.total * supplier_commission_percentage) / 100
+                self.append("commissions", {
+                    "item": supplier_commission_item,
+                    "price": self.grand_total,
+                    "commission": supplier_commission_percentage,
+                    "taxes": tax_rate,
+                    "commission_total": commission_total_with_taxes,
+                    "total_commission": total_commission_amount
+                })
+                self.total_commissions_and_taxes = commission_total_with_taxes
+                for item in self.items:
+                    item.commission = (item.total * supplier_commission_percentage) / 100
+            elif commission_base == 'Item':
+                total_commission_amount = 0
+                tax_amount = 0
+
+                for item in self.items:
+                    item_commission_percentage = get_item_commission_percentage(item.item_code) or 0
+                    item_commission_amount = (item.total * item_commission_percentage) / 100
+                    item_tax_amount = (item_commission_amount * tax_rate) / 100
+                    total_commission_amount += item_commission_amount
+                    tax_amount += item_tax_amount
+
+                    item.commission = item_commission_amount  # Set item-level commission
+
+                self.append("commissions", {
+                    "item": supplier_commission_item,
+                    "price": self.grand_total,
+                    "commission": round((total_commission_amount / self.grand_total) * 100, 2) if self.grand_total else 0,
+                    "taxes": tax_rate,
+                    "commission_total": total_commission_amount + tax_amount,
+                    "total_commission": total_commission_amount
+                })
+
+                commission_total_with_taxes = total_commission_amount + tax_amount
+                self.total_commissions_and_taxes = commission_total_with_taxes
+                
     def make_gl_entries(self):
         gl_entries = []
         if not self.company:
@@ -1176,3 +1212,27 @@ def get_parties_with_whatsapp_numbers(customers, supplier=None):
         result["supplier_has_whatsapp"] = bool(supplier_whatsapp)
     
     return result
+
+
+
+def get_item_commission_percentage(item):
+    """
+    Returns the commission percentage for the given `item`.
+    Will first search in Item record, if not found,
+    will search in group (Item Group),
+    finally will return default."""
+
+
+    # Get the percentage from the item doc
+    commission_percentage = frappe.db.get_value("Item", item, "commission_percentage")
+    if commission_percentage:
+        return commission_percentage
+
+    # Get the percentage from the item_group doc
+    item_group = frappe.db.get_value("Item", item, "item_group")
+    commission_percentage = frappe.db.get_value("Item Group", item_group, "commission_percentage")
+    if commission_percentage:
+        return commission_percentage
+
+    # Get the percentage from the Agriculture Settings single doc
+    return frappe.get_single("Agriculture Settings").get("customer_commission_percentage", 0)

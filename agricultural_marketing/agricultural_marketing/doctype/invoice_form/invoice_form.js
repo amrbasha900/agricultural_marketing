@@ -2,7 +2,11 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on("Invoice Form", {
+    onload: function(frm) {
+        set_fields_readonly_based_on_bulk_reference(frm);
+    },
  	refresh(frm) {
+        set_fields_readonly_based_on_bulk_reference(frm);
      	filter_basic_info_fields(frm);
      	filter_child_tables_fields(frm);
      	frm.add_custom_button("Print", () => {
@@ -501,4 +505,84 @@ function send_to_both_manual(frm, data) {
             }
         }
     });
+}
+
+
+function set_fields_readonly_based_on_bulk_reference(frm) {
+    // Check if bulk_invoice_reference has a value
+    if (frm.doc.bulk_invoice_reference) {
+        // Get all fields from DocType metadata
+        let all_fields = get_all_doctype_fields(frm);
+        
+        // Loop through all fields and make them readonly
+        all_fields.forEach(function(fieldname) {
+            // Skip making bulk_invoice_reference itself readonly if you want users to be able to clear it
+            // Remove this condition if you want ALL fields including bulk_invoice_reference to be readonly
+            if (fieldname !== 'bulk_invoice_reference') {
+                frm.set_df_property(fieldname, 'read_only', 1);
+            }
+        });
+        
+        
+    } else {
+        // If bulk_invoice_reference is empty, make fields editable again
+        let all_fields = get_all_doctype_fields(frm);
+        
+        // all_fields.forEach(function(fieldname) {
+        //     // Make fields editable (you might want to add conditions here for fields that should always be readonly)
+        //     // Skip system fields that should remain readonly
+        //     if (!is_system_field(fieldname)) {
+        //         frm.set_df_property(fieldname, 'read_only', 0);
+        //     }
+        // });
+        
+        // // Clear any previous messages
+        // frm.dashboard.clear_comment();
+    }
+}
+
+function get_all_doctype_fields(frm) {
+    let all_fields = [];
+    
+    // Method 1: Get from DocType meta (most comprehensive)
+    if (frm.meta && frm.meta.fields) {
+        frm.meta.fields.forEach(function(field) {
+            if (field.fieldname && field.fieldtype !== 'Section Break' && 
+                field.fieldtype !== 'Column Break' && field.fieldtype !== 'HTML') {
+                all_fields.push(field.fieldname);
+            }
+        });
+    }
+    
+    // Method 2: Also include fields from form fields_dict (in case some are missed)
+    if (frm.fields_dict) {
+        Object.keys(frm.fields_dict).forEach(function(fieldname) {
+            if (!all_fields.includes(fieldname)) {
+                all_fields.push(fieldname);
+            }
+        });
+    }
+    
+    // Method 3: Get from document object (includes all data fields)
+    if (frm.doc) {
+        Object.keys(frm.doc).forEach(function(fieldname) {
+            if (!all_fields.includes(fieldname) && !is_system_field(fieldname)) {
+                all_fields.push(fieldname);
+            }
+        });
+    }
+    
+    console.log('All fields found:', all_fields); // For debugging
+    return all_fields;
+}
+
+function is_system_field(fieldname) {
+    // List of system fields that should not be made readonly
+    let system_fields = [
+        'name', 'owner', 'creation', 'modified', 'modified_by', 
+        'docstatus', 'doctype', 'idx', '_user_tags', '_comments', 
+        '_assign', '_liked_by', '_seen'
+    ];
+    
+    return system_fields.includes(fieldname) || fieldname.startsWith('_');
 }
