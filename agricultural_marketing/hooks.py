@@ -237,6 +237,8 @@ fixtures = [
         "Customer-custom_send_invoice_via_whatsapp",
         "Supplier-custom_send_invoice_via_whatsapp",
         "Item-custom_is_agriculture_item",
-        "Supplier-custom_is_farmer"
+        "Supplier-custom_is_farmer",
+        "Item-custom_commission_percentage",
+        "Item Group-custom_commission_percentage"
         ]]]},
 ]
