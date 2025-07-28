@@ -18,7 +18,9 @@
   "commission",
   "section_break_parties",
   "supplier",
+  "supplier_name",
   "customer",
+  "customer_name",
   "column_break_3",
   "pamper",
   "section_break_reference",
@@ -104,7 +106,7 @@
    "fieldname": "supplier",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Supplier",
+   "label": "Supplier Code",
    "options": "Supplier",
    "reqd": 1
   },
@@ -113,7 +115,7 @@
    "fieldname": "customer",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Customer",
+   "label": "Customer Code",
    "options": "Customer",
    "reqd": 1
   },
@@ -161,12 +163,26 @@
    "hidden": 1,
    "label": "Last Invoice Sequence",
    "read_only": 1
+  },
+  {
+   "fetch_from": "supplier.supplier_name",
+   "fieldname": "supplier_name",
+   "fieldtype": "Data",
+   "label": "Supplier Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "customer.customer_name",
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-07-19 15:27:40.150001",
+ "modified": "2025-07-28 02:40:33.337158",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Bulk Invoice Form Item",

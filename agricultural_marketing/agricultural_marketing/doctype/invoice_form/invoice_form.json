@@ -10,6 +10,7 @@
   "naming_series",
   "company",
   "sent_via_whatsapp",
+  "is_printed",
   "column_break_rame",
   "posting_date",
   "posting_time",
@@ -247,13 +248,19 @@
    "label": "Bulk Invoice Reference",
    "options": "Bulk Invoice Form",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_printed",
+   "fieldtype": "Check",
+   "label": "Is Printed"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-07-19 15:33:35.896754",
+ "modified": "2025-07-28 03:28:04.652704",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",

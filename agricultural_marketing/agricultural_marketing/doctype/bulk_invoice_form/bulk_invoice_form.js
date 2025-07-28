@@ -3,8 +3,6 @@
 
 frappe.ui.form.on("Bulk Invoice Form", {
     refresh(frm) {
-        
-
         // Initialize original suppliers storage
         initialize_original_suppliers(frm);
         
@@ -18,16 +16,19 @@ frappe.ui.form.on("Bulk Invoice Form", {
         
         // Add visual indicators for items with references
         add_reference_indicators(frm);
+
+        // Add save button beside add row button
+        add_save_button_to_grid(frm);
     },
     
     onload(frm) {
-        // Also set up filters on load
+        // Set up filters on load
         setup_filters(frm);
         if (frm.is_new()) {
-            // Change `items` to your actual child table fieldname
+            // Remove first empty row if exists
             if (frm.doc.items && frm.doc.items.length > 0) {
-                frm.doc.items.splice(0, 1); // remove first row
-                frm.refresh_field('items'); // refresh UI
+                frm.doc.items.splice(0, 1);
+                frm.refresh_field('items');
             }
         }
     },
@@ -70,22 +71,68 @@ frappe.ui.form.on("Bulk Invoice Form", {
     }
 });
 
+function add_save_button_to_grid(frm) {
+    if (frm.fields_dict.items && frm.fields_dict.items.grid) {
+        setTimeout(() => {
+            let grid = frm.fields_dict.items.grid;
+            let grid_buttons = grid.wrapper.find('.grid-add-row');
+            
+            // Add save button next to add row button
+            if (grid_buttons.length && !grid.wrapper.find('.grid-save-btn').length) {
+                grid_buttons.after(`
+                    <button class="btn btn-xs btn-default grid-save-btn" style="margin-left: 5px;">
+                        <i class="fa fa-save"></i> Save Document
+                    </button>
+                `);
+                
+                // Add click handler for save button
+                grid.wrapper.find('.grid-save-btn').click(function() {
+                    frm.save().then(() => {
+                        frappe.show_alert({
+                            message: __("Document saved successfully"),
+                            indicator: 'green'
+                        });
+                    }).catch((error) => {
+                        frappe.show_alert({
+                            message: __("Error saving document"),
+                            indicator: 'red'
+                        });
+                    });
+                });
+            }
+        }, 500);
+    }
+}
+
 frappe.ui.form.on("Bulk Invoice Form Item", {
     items_add: function(frm, cdt, cdn) {
-        // Set up child table filters when first item is added
+        // Set up child table filters when item is added
         setup_child_table_filters(frm);
         
         let row = locals[cdt][cdn];
         
-        // Set default values from parent
-        if (frm.doc.default_supplier) {
+        // Set default values from parent if not already set
+        if (frm.doc.default_supplier && !row.supplier) {
             row.supplier = frm.doc.default_supplier;
         }
-        if (frm.doc.default_customer) {
+        if (frm.doc.default_customer && !row.customer) {
             row.customer = frm.doc.default_customer;
         }
-        if (frm.doc.default_pamper) {
+        if (frm.doc.default_pamper && !row.pamper) {
             row.pamper = frm.doc.default_pamper;
+        }
+        
+        // Copy item details from previous row if exists
+        if (frm.doc.items && frm.doc.items.length > 1) {
+            let previous_row = frm.doc.items[frm.doc.items.length - 2]; // Get previous row
+            if (previous_row && previous_row.item_code) {
+                row.item_code = previous_row.item_code;
+                row.item_name = previous_row.item_name;
+                // Override with previous row's values if they exist
+                if (previous_row.supplier) row.supplier = previous_row.supplier;
+                if (previous_row.customer) row.customer = previous_row.customer;
+                if (previous_row.pamper) row.pamper = previous_row.pamper;
+            }
         }
         
         frm.refresh_field("items");
@@ -221,12 +268,58 @@ function add_custom_buttons(frm) {
         frm.add_custom_button(__("Create Invoice Forms"), function() {
             create_invoice_forms(frm);
         }, __("Actions"));
+        
+        frm.add_custom_button(__("Sync with Invoice Forms"), function() {
+            sync_with_invoice_forms(frm);
+        }, __("Actions"));
     }
     
     // Move Actions menu to be more prominent
     if (frm.custom_buttons[__("Actions")]) {
         frm.custom_buttons[__("Actions")].addClass('btn-primary');
     }
+}
+
+function sync_with_invoice_forms(frm) {
+    if (!frm.doc.items || frm.doc.items.length === 0) {
+        frappe.msgprint(__("No items to sync"));
+        return;
+    }
+    
+    // Check if there are any items with invoice form references
+    let items_with_references = frm.doc.items.filter(item => item.reference_invoice_form);
+    
+    if (items_with_references.length === 0) {
+        frappe.msgprint(__("No items have Invoice Form references to sync"));
+        return;
+    }
+    
+    frappe.confirm(
+        __("This will sync all changes with related Invoice Forms. Are you sure?"),
+        function() {
+            frappe.call({
+                method: "sync_with_invoice_forms",
+                doc: frm.doc,
+                callback: function(r) {
+                    if (r.message) {
+                        let result = r.message;
+                        if (result.synced && result.synced.length > 0) {
+                            frappe.show_alert({
+                                message: __("Successfully synced with {0} Invoice Forms", [result.synced.length]),
+                                indicator: "green"
+                            });
+                        }
+                        if (result.failed && result.failed.length > 0) {
+                            frappe.show_alert({
+                                message: __("Failed to sync with {0} Invoice Forms", [result.failed.length]),
+                                indicator: "red"
+                            });
+                        }
+                    }
+                }
+            });
+        }
+    );
 }
 
 function view_all_invoice_forms(frm) {

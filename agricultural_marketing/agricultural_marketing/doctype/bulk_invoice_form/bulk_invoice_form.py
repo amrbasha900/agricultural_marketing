@@ -9,27 +9,31 @@ from collections import defaultdict
 
 class BulkInvoiceForm(Document):
     def before_save(self):
-        """Handle updates before saving with change detection"""
-        # Get the old document for comparison
-        old_doc = self.get_doc_before_save()
-        
-        # First calculate totals
+        """Handle updates before saving - only calculate totals"""
+        # Only calculate totals, no automatic invoice form operations
         self.calculate_totals()
+    # def before_save(self):
+    #     """Handle updates before saving with change detection"""
+    #     # Get the old document for comparison
+    #     old_doc = self.get_doc_before_save()
         
-        # Handle changes if there's an old document
-        if old_doc:
-            self.handle_item_changes(old_doc)
+    #     # First calculate totals
+    #     self.calculate_totals()
+        
+    #     # Handle changes if there's an old document
+    #     if old_doc:
+    #         self.handle_item_changes(old_doc)
     
-    def after_insert(self):
-        """Handle actions after document is inserted (for new documents)"""
-        # For new documents, auto-create invoice forms after the document has a name
-        self.auto_create_invoice_forms_for_unlinked_items()
+    # def after_insert(self):
+    #     """Handle actions after document is inserted (for new documents)"""
+    #     # For new documents, auto-create invoice forms after the document has a name
+    #     self.auto_create_invoice_forms_for_unlinked_items()
         
-    def after_save(self):
-        """Handle actions after document is saved"""
-        # For existing documents that were updated, ensure all items have invoice forms
-        if not self.is_new():
-            self.auto_create_invoice_forms_for_unlinked_items()
+    # def after_save(self):
+    #     """Handle actions after document is saved"""
+    #     # For existing documents that were updated, ensure all items have invoice forms
+    #     if not self.is_new():
+    #         self.auto_create_invoice_forms_for_unlinked_items()
     
     def handle_item_changes(self, old_doc):
         """Detect and handle changes in items table"""
@@ -499,7 +503,35 @@ class BulkInvoiceForm(Document):
                 except Exception as e:
                     frappe.log_error(message=f"Error cleaning up invoice form {item.reference_invoice_form}: {str(e)}", title="Cleanup Error")
 
-
+    @frappe.whitelist()
+    def sync_with_invoice_forms(self):
+        """Manually sync changes with related invoice forms"""
+        synced_forms = []
+        failed_forms = []
+        
+        for item in self.items:
+            if item.reference_invoice_form and item.reference_invoice_form_item:
+                try:
+                    result = self.sync_single_item(item)
+                    if result.get("success", True) and item.reference_invoice_form not in synced_forms:
+                        synced_forms.append(item.reference_invoice_form)
+                except Exception as e:
+                    if item.reference_invoice_form not in failed_forms:
+                        failed_forms.append(item.reference_invoice_form)
+                    frappe.log_error(message=f"Error syncing item {item.name}: {str(e)}", title="Sync Error")
+        
+        # Show results
+        if synced_forms:
+            frappe.msgprint(_("Successfully synced {0} Invoice Forms: {1}").format(
+                len(synced_forms), ", ".join(synced_forms)
+            ))
+        
+        if failed_forms:
+            frappe.msgprint(_("Failed to sync {0} Invoice Forms: {1}").format(
+                len(failed_forms), ", ".join(failed_forms)
+            ), indicator="red")
+        
+        return {"synced": synced_forms, "failed": failed_forms}
 # Helper functions...
 
 @frappe.whitelist()
@@ -846,3 +878,4 @@ def create_bulk_invoice_from_items(items_data, company, posting_date=None):
     
     bulk_invoice.insert(ignore_permissions=True)
     return bulk_invoice.name
+
