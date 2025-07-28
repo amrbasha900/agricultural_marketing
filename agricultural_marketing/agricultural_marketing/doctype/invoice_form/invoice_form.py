@@ -7,7 +7,6 @@ from erpnext.accounts.general_ledger import validate_accounting_period, make_ent
 from erpnext.accounts.party import get_party_account
 from frappe.utils import now
 import copy
-
 from settings_manager.utils.data import money_in_words
 
 
