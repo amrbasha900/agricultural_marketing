@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="pdfkit-page-size" content="A5">
+    <meta name="pdfkit-orientation" content="Portrait">
+    <meta name="pdfkit-margin-right" content="7mm">
+    <meta name="pdfkit-margin-left" content="7mm">
+    <meta name="pdfkit-margin-top" content="0mm">
+    <meta name="pdfkit-margin-bottom" content="10mm">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@200..1000&display=swap" rel="stylesheet">
+    <title>فاتورة مزارع</title>
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            direction: rtl;
+            text-align: right;
+            margin: 0;
+        }
+
+        .print-format {
+
+            margin-left: 5mm;
+            margin-right: 5mm;
+            font-family: 'Cairo', sans-serif;
+
+
+        }
+
+        .invoice-header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+
+        .invoice-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 5px;
+        }
+
+        .col-xs-12 {
+            width: 100%;
+            padding: 2px;
+        }
+
+        .col-xs-6 {
+            width: 50%;
+            padding: 2px;
+        }
+
+        .col-xs-4 {
+            width: 33.33%;
+            padding: 2px;
+        }
+
+        .col-xs-3 {
+            width: 25%;
+            padding: 2px;
+        }
+
+        .col-xs-2 {
+            width: 16.66%;
+            padding: 2px;
+        }
+
+        .info-item {
+            font-size: 11px;
+            font-weight: 500;
+            text-align: right;
+            margin: 2px 0;
+        }
+
+        .supplier-section {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 15px 0;
+            background-color: #f8f9fa;
+            padding: 8px;
+            border: 1px solid #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 11px;
+        }
+
+        table th,
+        table td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        table th {
+            background-color: #f8f9fa;
+            font-weight: 700;
+        }
+
+        .summary-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .total-line {
+            border-top: 2px solid #333;
+            border-bottom: 2px solid #333;
+            padding: 5px 0;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .amount-words {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border: 1px solid #333;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    {% if letter_head %}
+    <div>
+        {{ letter_head }}
+    </div>
+    {% endif %}
+    <div class="print-format">
+        <!-- Invoice Header -->
+        <div class="row">
+            <div class="col-xs-12" style="text-align: center; margin-bottom: 20px;">
+                <h1 style="font-size: 18px; font-weight: 700; margin: 0;">ايصال استلام</h1>
+            </div>
+        </div>
+
+        <!-- Invoice Info -->
+        <div class="row">
+            <div class="col-xs-6">
+                <div class="info-item"><b>رقم الفاتورة</b>: {{doc.name}}</div>
+                <div class="info-item"> <b>تاريخ الفاتورة</b>: {{doc.posting_date}}</div>
+            </div>
+            <div class="col-xs-6">
+                <div class="info-item"><b>تاريخ الطباعة</b>: {{ frappe.utils.getdate(frappe.utils.nowdate()) }}</div>
+                <div class="info-item"><b>وقت الطباعة</b>:{{ frappe.utils.get_time_str(frappe.utils.now()) }}</div>
+            </div>
+        </div>
+
+        <!-- Separator Line -->
+        <div class="row">
+            <div class="col-xs-12" style="border-bottom: 2px solid #333; margin: 15px 0;"></div>
+        </div>
+
+        <!-- Supplier Section -->
+        <div class="row supplier-section">
+            {% if frappe.db.get_single_value("Agriculture Settings", "show_supplier_code_in_pdf") %}
+            <div class="col-xs-6">
+                 <b>اسم المورد</b>: {{frappe.db.get_value("Supplier",doc.supplier,"supplier_name")}}
+            </div>
+            <div class="col-xs-6">
+                 <b>كود المورد</b>: {{doc.supplier}}
+            </div>
+            {%else%}
+            <div class="col-xs-12">
+                 <b>اسم المورد</b>: {{frappe.db.get_value("Supplier",doc.supplier,"supplier_name")}}
+            </div>
+            {%endif%}
+            
+        </div>
+
+        <!-- Invoice Table -->
+        <div class="row">
+            <div class="col-xs-12">
+                <table>
+                    <thead>
+                        <tr>
+                            
+                            <th>الصنف</th>
+                            <th>السعر</th>
+                            <th>الكمية</th>
+                            <th>المجموع</th>
+                            <th>المشتري</th>
+                            <th>الملاحظات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set ns = namespace(commission=0) %}
+                        {% for item in doc.items %}
+                        <tr>
+                            <td>{{item.item_name}}</td>
+                            <td>{{item.price|round(2)}}</td>
+                            <td>{{ item.qty|round(2) }}</td>
+                            <td>{{ item.total|round(2) }}</td>
+                            <td>{{ item.customer }}</td>
+                            <td></td>
+                            {% set ns.commission = ns.commission + item.commission %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Summary Lines -->
+        <!-- <div class="row">
+            <div class="col-xs-12">
+                <div class="summary-line">
+                   <b><span>إجمالي المبلغ</span> : </b> 
+                    <span>{{doc.grand_total|round(2)}}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xs-12">
+                <div class="summary-line">
+                    <b><span>السعي</span> : </b>
+                    <span>{{ns.commission|round(2)}}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xs-12">
+                <div class="summary-line">
+                   <b> <span>ضريبة السعي</span> : </b>
+                    <span>{{(doc.total_commissions_and_taxes - ns.commission)|round(2)}}</span>
+                </div>
+            </div>
+        </div> -->
+
+        <div class="row">
+            <div class="col-xs-12">
+                <div class="summary-line total-line">
+                    <span>المجموع الكلي</span> :
+                    <span>{{(doc.grand_total - doc.total_commissions_and_taxes)|round(2)}}</span>
+                </div>
+            </div>
+        </div>
+        
+
+        <!-- Amount in Words -->
+        <div class="row">
+            <div class="col-xs-12">
+                <div class="amount-words">
+                    {{get_currency_in_arabic(currency="SAR",  amount= (doc.grand_total - doc.total_commissions_and_taxes))}}
+                                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-xs-12">
+                <b>ملاحظة :</b>
+                <div class="amount-words">
+                    {{frappe.db.get_single_value("Agriculture Settings", "supplier_receipt_notes")}}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

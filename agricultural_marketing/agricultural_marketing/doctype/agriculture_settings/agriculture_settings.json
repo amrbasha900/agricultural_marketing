@@ -25,6 +25,7 @@
   "title_of_supplier_invoice_in_pdf",
   "show_supplier_code_in_pdf",
   "show_customer_code_in_pdf",
+  "supplier_receipt_notes",
   "pamper_section",
   "active_pamper_commission",
   "pamper_commission",
@@ -188,13 +189,18 @@
    "fieldname": "show_customer_code_in_pdf",
    "fieldtype": "Check",
    "label": "Show Customer Code In PDF"
+  },
+  {
+   "fieldname": "supplier_receipt_notes",
+   "fieldtype": "Text Editor",
+   "label": "Supplier Receipt Notes"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-07-24 16:35:48.294085",
+ "modified": "2025-07-28 14:53:35.711575",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",

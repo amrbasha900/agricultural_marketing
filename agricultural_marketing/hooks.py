@@ -242,3 +242,9 @@ fixtures = [
         "Item Group-custom_commission_percentage"
         ]]]},
 ]
+jinja = {
+    "methods": [
+        "agricultural_marketing.utils.jinja_custom_function.get_currency_in_arabic",
+    ]
+}
+
