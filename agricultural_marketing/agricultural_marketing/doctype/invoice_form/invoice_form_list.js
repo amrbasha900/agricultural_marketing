@@ -1,4 +1,4 @@
-// Method 1: Custom List View Button with Bulk PDF Download + Update Status
+// Method 1: Custom List View Button with Bulk PDF Download + Update Status (Permission Bypass)
 frappe.listview_settings['Invoice Form'] = {
     onload: function(listview) {
         // Add custom button to list view
@@ -27,43 +27,27 @@ frappe.listview_settings['Invoice Form'] = {
                     // Download the bulk PDF
                     window.open(bulk_print_url, '_blank');
                     
-                    // Update all selected records as printed
-                    let updatePromises = selected.map(doc => {
-                        return new Promise((resolve, reject) => {
-                            frappe.call({
-                                method: 'frappe.client.set_value',
-                                args: {
-                                    doctype: 'Invoice Form',
-                                    name: doc.name,
-                                    fieldname: {
-                                        'is_printed': 1,
-                                    }
-                                },
-                                callback: function(r) {
-                                    if (r.message) {
-                                        resolve(r);
-                                    } else {
-                                        reject(r);
-                                    }
-                                }
-                            });
-                        });
-                    });
-                    
-                    // Wait for all updates to complete
-                    Promise.all(updatePromises).then(() => {
-                        frappe.show_alert({
-                            message: `${selected.length} invoices marked as printed`,
-                            indicator: 'green'
-                        });
-                        listview.refresh();
-                    }).catch((error) => {
-                        frappe.msgprint({
-                            title: 'Error',
-                            message: 'Some records could not be updated',
-                            indicator: 'red'
-                        });
-                        console.error('Update error:', error);
+                    // Update all selected records as printed using custom server method
+                    frappe.call({
+                        method: 'agricultural_marketing.api.mark_invoices_as_printed',  // Replace 'your_app' with your actual app name
+                        args: {
+                            invoice_names: names
+                        },
+                        callback: function(r) {
+                            if (r.message && r.message.success) {
+                                frappe.show_alert({
+                                    message: `${r.message.updated_count} of ${r.message.total_count} invoices marked as printed`,
+                                    indicator: 'green'
+                                });
+                                listview.refresh();
+                            } else {
+                                frappe.msgprint({
+                                    title: 'Error',
+                                    message: 'Some records could not be updated',
+                                    indicator: 'red'
+                                });
+                            }
+                        }
                     });
                 }
             );

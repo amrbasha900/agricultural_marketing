@@ -157,6 +157,15 @@ doc_events = {
 # 	],
 # }
 
+scheduler_events = {
+    "daily": [
+        "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.cleanup_old_files"
+    ],
+    "hourly": [
+        "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.monitor_failed_batches"
+    ]
+}
+
 # Testing
 # -------
 
@@ -239,7 +248,8 @@ fixtures = [
         "Item-custom_is_agriculture_item",
         "Supplier-custom_is_farmer",
         "Item-custom_commission_percentage",
-        "Item Group-custom_commission_percentage"
+        "Item Group-custom_commission_percentage",
+        "Customer-custom_couple_customer"
         ]]]},
 ]
 jinja = {

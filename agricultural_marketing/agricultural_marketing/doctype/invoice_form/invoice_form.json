@@ -254,6 +254,7 @@
    "default": "0",
    "fieldname": "is_printed",
    "fieldtype": "Check",
+   "ignore_user_permissions": 1,
    "label": "Is Printed"
   }
  ],
@@ -261,7 +262,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-07-28 14:02:36.294184",
+ "modified": "2025-08-02 14:37:46.123952",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",

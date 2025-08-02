@@ -1,0 +1,97 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-08-02 22:09:47.119396",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+    "file_details_section",
+    "file_name",
+    "cleanup_date",
+    "status",
+    "column_break_1",
+    "file_size",
+    "created_by",
+    "created_date"
+  ],
+  "fields": [
+    {
+      "fieldname": "file_details_section",
+      "label": "File Details",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "file_name",
+      "label": "File Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "cleanup_date",
+      "label": "Cleanup Date",
+      "fieldtype": "Date",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Scheduled\nCompleted\nFailed",
+      "default": "Scheduled",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "file_size",
+      "label": "File Size",
+      "fieldtype": "Data",
+      "description": "File size in bytes or human readable format"
+    },
+    {
+      "fieldname": "created_by",
+      "label": "Created By",
+      "fieldtype": "Link",
+      "options": "User",
+      "default": "user"
+    },
+    {
+      "fieldname": "created_date",
+      "label": "Created Date",
+      "fieldtype": "Date",
+      "default": "Today"
+    }
+  ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-08-02 22:09:47.119396",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "File Cleanup Schedule",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

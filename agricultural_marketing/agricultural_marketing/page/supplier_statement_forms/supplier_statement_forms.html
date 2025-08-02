@@ -1,0 +1,228 @@
+{% set is_supplier=true %}
+{% set neglect_items=false %}
+{% if filters.party_type == "Supplier" %}
+{% set is_supplier = true %}
+{% else %}
+{% set is_supplier = false %}
+{% endif %}
+{% if layout_direction == "rtl" %}
+{% set is_rtl = true %}
+{% else %}
+{% set is_rtl = false %}
+{% endif %}
+{% if filters.neglect_items %}
+{% set neglect_items = true %}
+{% else %}
+{% set neglect_items = false %}
+{% endif %}
+<html dir="rtl" lang="ar">
+<style>
+    table, th, td{
+      width: 100%;
+      border: 1px solid black;
+      border-collapse: collapse;
+      text-align: center;
+      margin-bottom: 20px;
+      margin-top: 20px;
+      font-size: {{ font_size }}px;
+      table-layout:fixed;
+    }
+    img{
+        width: 100%;
+    }
+    .header-details{
+      margin-bottom: 0px;
+      margin-top: 0x;
+    }
+    .header-details td{
+      margin: auto;
+      font-size: 14px;
+    }
+</style>
+<body>
+{% if letter_head %}
+{{ letter_head.content }}
+<hr>
+{% endif %}
+<table class="header-details" style="border:none;direction:rtl;">
+    <tbody>
+        <tr style="border:none;">
+            <td colspan="2" style="border:none; width:100%; text-align:center; direction:rtl; white-space:nowrap;">
+                <div style="display: flex; justify-content: space-around; align-items: center; width: 100%; flex-wrap: nowrap;">
+                    {% if is_supplier %} 
+                        <span style="margin: 0 20px; white-space: nowrap;">
+                            {{ _("اسم المورد") }} : {{frappe.db.get_value("Supplier", header.party, "supplier_name") }}
+                        </span>
+                        {% if frappe.db.get_single_value("Agriculture Settings", "show_supplier_code_in_pdf") %}
+                        <span style="margin: 0 20px; white-space: nowrap; direction:rtl;">
+                            {{ _("كود المورد") }} : {{header.party }}
+                        </span>
+                        {% endif %}
+                    {% else %}
+                        <span style="margin: 0 20px; white-space: nowrap;">
+                            {{ _("Customer Name") }} : {{frappe.db.get_value("Customer", header.party, "customer_name") }}
+                        </span>
+                        {% if frappe.db.get_single_value("Agriculture Settings", "show_customer_code_in_pdf") %}
+                        <span style="margin: 0 20px; white-space: nowrap; direction:rtl;">
+                            {{ _("كود العميل") }} : {{header.party }}
+                        </span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+    </tbody>
+</table>
+<hr>
+<div style="text-align:center;direction:rtl;">
+    {{ _("من تاريخ") }}: {{ filters.from_date }} &nbsp;
+    {{ _("إلى تاريخ") }}: {{ filters.to_date }}
+</div>
+<hr>
+{% if summary %}
+<!--Summary Table-->
+<div>
+    <h5> {{ _("ملخص") }} </h5>
+</div>
+<table class="table summary-table" id="summary" style="direction:rtl;">
+    <thead>
+    <tr>
+        <th style="width: 25%"> {{ _("البيان") }}</th>
+        <th style="width: 25%"> {{ _("منه") }}</th>
+        <th style="width: 25%"> {{ _("له") }}</th>
+        <th style="width: 25%"> {{ _("الموازنه") }}</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for sum in summary %}
+    <tr>
+        <td> {% if sum.statement == "Opening Balance" %} الرصيد الافتتاحى 
+            {% elif sum.statement  == "Total" %} الاجمالي 
+            {% elif sum.statement == "Duration Selling" %}مبيعات الفترة
+            {% elif sum.statement == "Duration Buying" %}مشتريات الفترة
+
+            {% elif sum.statement == "Duration Payments" %}المدفوعات خلال الفترة 
+            {% elif sum.statement %}{{sum.statement}}
+            {% endif %}</td>
+        <td> {% if sum.debit %} {{ sum.debit }} {% endif %}</td>
+        <td> {% if sum.credit %} {{ sum.credit }} {% endif %}</td>
+        <td> {% if sum.balance %} {{ sum.balance }} {% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<hr>
+{% endif %}
+
+{% if items %}
+<!--Items Details Table-->
+<div>
+    <h5> {{ _("تفاصيل المبيعات") }} </h5>
+</div>
+<table class="table" id="items">
+    <thead>
+    <tr>
+        <th style="width: 10%"> {{ _("التاريخ") }}</th>
+        <th style="width: 15%"> {{ _("رقم الفاتورة") }}</th>
+        {% if not filters.neglect_items %}
+        <th style="width: 15%"> {{ _("السلعة") }}</th>
+        <th style="width: 8%"> {{ _("الكمية") }}</th>
+        <th style="width:8%"> {{ _("السعر") }}</th>
+        {% endif %}
+        <th style="width: 8%"> {{ _("الإجمالى") }}</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for item in items %}
+    <tr>
+        <td> {% if item.date == "Total" %} الإجمالى{% else %} {{ item.date }}{% endif %}</td>
+        <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %}</td>
+        {% if not filters.neglect_items %}
+        <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
+        <td> {% if item.qty %} {{ item.qty }} {% endif %}</td>
+        <td> {% if item.price %} {{ item.price }} {% endif %}</td>
+        {% endif %}
+        <td> {% if item.total %} {{ item.total }} {% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<hr>
+{% endif %}
+
+{% if buying_items %}
+<!--Items Details Table-->
+<div>
+    <h5> {{ _("تفاصيل المشتريات") }} </h5>
+</div>
+<table class="table" id="items">
+    <thead>
+    <tr>
+        <th style="width: 10%"> {{ _("التاريخ") }}</th>
+        <th style="width: 15%"> {{ _("رقم الفاتورة") }}</th>
+        {% if not filters.neglect_items %}
+        <th style="width: 15%"> {{ _("السلعة") }}</th>
+        <th style="width: 8%"> {{ _("الكمية") }}</th>
+        <th style="width:8%"> {{ _("السعر") }}</th>
+        {% endif %}
+        <th style="width: 8%"> {{ _("الإجمالى") }}</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for item in buying_items %}
+    <tr>
+        <td> {% if item.date == "Total" %} الإجمالى{% else %} {{ item.date }}{% endif %}</td>
+        <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %}</td>
+        {% if not filters.neglect_items %}
+        <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
+        <td> {% if item.qty %} {{ item.qty }} {% endif %}</td>
+        <td> {% if item.price %} {{ item.price }} {% endif %}</td>
+        {% endif %}
+        <td> {% if item.total %} {{ item.total }} {% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<hr>
+{% endif %}
+
+<!--Payments Table-->
+{% if payments %}
+<div>
+    <h5> {{ _("تفاصيل الدفعات") }} </h5>
+</div>
+<table class="table" id="payments">
+    <thead>
+    <tr>
+        <th style="width: 10%"> {{ _("التاريخ") }}</th>
+        <th style="width: 18%"> {{ _("رقم السند") }}</th>
+        <th style="width: 6%"> {{ _("طريقة الدفع") }}</th>
+        <th style="width: 6%"> {{ _("نوع الدفع") }}</th>
+        <th style="width: 20%"> {{ _("ملاحظات") }}</th>
+        <th style="width: 10%"> {{ _("المبلغ المدفوع") }}</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for payment in payments %}
+    <tr>
+        <td> {% if payment.date == "Total" %} الإجمالى{% else %} {{ payment.date }}{% endif %}</td>
+        <td> {% if payment.payment_id %} {{ payment.payment_id }} {% endif %}</td>
+        <td> {% if payment.mop == "Receive" %}تسلم{% elif payment.mop == "Pay" %}دفع  {% elif payment.mop %}{{ _(payment.mop) }} {% endif %}</td>
+        <td> {% if payment.payment_type %} {{ _(payment.payment_type) }} {% endif %}</td>
+        <td> {% if payment.remarks %} {{ payment.remarks }} {% endif %}</td>
+        <td> {{ payment.paid_amount }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+<div id="footer-html" class="visible-pdf">
+    <div class="letter-head-footer">
+        <div class="row">
+            <div class="col-xs-4" style="text-align: left;font-size: 12px;">وقت الطباعة : {{frappe.utils.format_datetime(frappe.utils.now(), "dd-mm-yyyy HH:mm:ss")}}</div>
+            <div class="col-xs-8" style="text-align: right;font-size: 12px;"> {% if frappe.db.get_single_value("Agriculture Settings", "report_note") %}<u>{{frappe.db.get_single_value("Agriculture Settings", "report_note")}}</u>  {% endif %}  </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

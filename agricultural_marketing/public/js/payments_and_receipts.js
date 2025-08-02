@@ -333,7 +333,8 @@ frappe.ui.form.on("Payments Receipts Reference", {
             frm.fields_dict['references'].grid.get_field("party").get_query = function() {
                 return {
                     filters: {
-                        is_customer: 1
+                        is_customer: 1,
+                        couple_customer: 0
                     }
                 }
             };

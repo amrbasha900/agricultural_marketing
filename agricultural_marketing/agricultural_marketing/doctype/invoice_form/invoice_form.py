@@ -159,32 +159,64 @@ class InvoiceForm(Document):
     def make_customers_gl_entries(self, gl_entries, company_defaults):
         customers = []
         for it in self.items:
-            if it.customer in customers:
-                customer_record = [d for d in gl_entries if d.get("party") == it.customer][0]
-                customer_record.update({
-                    "debit": customer_record["debit"] + it.total,
-                    "debit_in_account_currency": customer_record["debit_in_account_currency"] + it.total,
-                    "debit_in_transaction_currency": customer_record["debit_in_transaction_currency"] + it.total,
+            if it.couple_customer:
+                couple_supplier = frappe.db.get_value('Supplier',{'related_customer': it.customer}, 'name')
+                
+                if couple_supplier in customers:
+                    customer_record = [d for d in gl_entries if d.get("party") == couple_supplier][0]
+                    customer_record.update({
+                        "debit": customer_record["debit"] + it.total,
+                        "debit_in_account_currency": customer_record["debit_in_account_currency"] + it.total,
+                        "debit_in_transaction_currency": customer_record["debit_in_transaction_currency"] + it.total,
+                    })
 
-                })
+                else:
+                    gl_entries.append({
+                        "posting_date": self.posting_date,
+                        "due_date": self.posting_date,
+                        "account": get_party_account("Supplier", couple_supplier, self.company),
+                        "party_type": "Supplier",
+                        "party": couple_supplier,
+                        "debit": it.total,
+                        "account_currency": company_defaults.default_currency,
+                        "debit_in_account_currency": it.total,
+                        "voucher_type": self.doctype,
+                        "voucher_no": self.name,
+                        "company": self.company,
+                        "cost_center": company_defaults.cost_center,
+                        "debit_in_transaction_currency": it.total,
+                        "transaction_exchange_rate": 1
+                    })
+                    customers.append(couple_supplier)
+                #self.make_gl_dict_for_commission(gl_entries, company_defaults)
+
+
             else:
-                gl_entries.append({
-                    "posting_date": self.posting_date,
-                    "due_date": self.posting_date,
-                    "account": get_party_account("Customer", it.customer, self.company),
-                    "party_type": "Customer",
-                    "party": it.customer,
-                    "debit": it.total,
-                    "account_currency": company_defaults.default_currency,
-                    "debit_in_account_currency": it.total,
-                    "voucher_type": self.doctype,
-                    "voucher_no": self.name,
-                    "company": self.company,
-                    "cost_center": company_defaults.cost_center,
-                    "debit_in_transaction_currency": it.total,
-                    "transaction_exchange_rate": 1
-                })
-                customers.append(it.customer)
+                if it.customer in customers:
+                    customer_record = [d for d in gl_entries if d.get("party") == it.customer][0]
+                    customer_record.update({
+                        "debit": customer_record["debit"] + it.total,
+                        "debit_in_account_currency": customer_record["debit_in_account_currency"] + it.total,
+                        "debit_in_transaction_currency": customer_record["debit_in_transaction_currency"] + it.total,
+                    })
+                else:
+                    gl_entries.append({
+                        "posting_date": self.posting_date,
+                        "due_date": self.posting_date,
+                        "account": get_party_account("Customer", it.customer, self.company),
+                        "party_type": "Customer",
+                        "party": it.customer,
+                        "debit": it.total,
+                        "account_currency": company_defaults.default_currency,
+                        "debit_in_account_currency": it.total,
+                        "voucher_type": self.doctype,
+                        "voucher_no": self.name,
+                        "company": self.company,
+                        "cost_center": company_defaults.cost_center,
+                        "debit_in_transaction_currency": it.total,
+                        "transaction_exchange_rate": 1
+                    })
+                    customers.append(it.customer)
 
     def make_gl_entries_on_cancel(self):
         gl_entry = frappe.qb.DocType("GL Entry")

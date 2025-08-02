@@ -16,6 +16,7 @@
   "customer_commission_percentage",
   "supplier_commission_item",
   "commission_based_on",
+  "allow_couple_account",
   "column_break_nyvz",
   "commission_item",
   "pos_profile",
@@ -31,7 +32,16 @@
   "pamper_commission",
   "column_break_dtcr",
   "automatic_pamper_commission_creation",
-  "pamper_commission_account"
+  "pamper_commission_account",
+  "report_pdfs_setting_tab",
+  "pdf_batch_size",
+  "whatsapp_batch_size",
+  "max_retry_attempts",
+  "column_break_btoi",
+  "delay_between_batches_seconds",
+  "delay_between_messages_seconds",
+  "enable_auto_cleanup",
+  "cleanup_after_days"
  ],
  "fields": [
   {
@@ -194,13 +204,77 @@
    "fieldname": "supplier_receipt_notes",
    "fieldtype": "Text Editor",
    "label": "Supplier Receipt Notes"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_couple_account",
+   "fieldtype": "Check",
+   "label": "Allow Couple Account"
+  },
+  {
+   "fieldname": "report_pdfs_setting_tab",
+   "fieldtype": "Tab Break",
+   "label": "Report PDFs Setting"
+  },
+  {
+   "default": "50",
+   "description": "Number of PDFs to process in each batch",
+   "fieldname": "pdf_batch_size",
+   "fieldtype": "Int",
+   "label": "PDF Batch Size"
+  },
+  {
+   "fieldname": "column_break_btoi",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "20",
+   "description": "Number of WhatsApp messages to send in each batch",
+   "fieldname": "whatsapp_batch_size",
+   "fieldtype": "Int",
+   "label": "WhatsApp Batch Size"
+  },
+  {
+   "default": "3",
+   "description": "Maximum number of retry attempts for failed messages",
+   "fieldname": "max_retry_attempts",
+   "fieldtype": "Int",
+   "label": "Max Retry Attempts"
+  },
+  {
+   "default": "5",
+   "description": "Delay in seconds between processing batches",
+   "fieldname": "delay_between_batches_seconds",
+   "fieldtype": "Int",
+   "label": "Delay Between Batches (seconds)"
+  },
+  {
+   "default": "2",
+   "description": "Delay in seconds between individual WhatsApp messages",
+   "fieldname": "delay_between_messages_seconds",
+   "fieldtype": "Int",
+   "label": "Delay Between Messages (seconds)"
+  },
+  {
+   "default": "1",
+   "description": "Automatically clean up files after specified days",
+   "fieldname": "enable_auto_cleanup",
+   "fieldtype": "Check",
+   "label": "Enable Auto Cleanup"
+  },
+  {
+   "default": "1",
+   "description": "Number of days after which files should be cleaned up",
+   "fieldname": "cleanup_after_days",
+   "fieldtype": "Int",
+   "label": "Cleanup After Days"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-07-28 14:53:35.711575",
+ "modified": "2025-08-02 22:20:52.824946",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",

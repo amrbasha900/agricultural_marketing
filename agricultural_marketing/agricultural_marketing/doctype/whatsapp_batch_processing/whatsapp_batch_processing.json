@@ -1,0 +1,199 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-08-02 22:09:11.880192",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+"field_order": [
+      "batch_details_section",
+      "batch_id",
+      "user",
+      "status",
+      "column_break_1",
+      "start_time",
+      "end_time",
+      "last_updated",
+      "counts_section",
+      "total_count",
+      "processed_count",
+      "column_break_2",
+      "success_count",
+      "failed_count",
+      "retry_section",
+      "retry_count",
+      "retry_success_count",
+      "column_break_3",
+      "retry_failed_count",
+      "details_section",
+      "filters",
+      "failed_parties"
+    ],
+    "fields": [
+      {
+        "fieldname": "batch_details_section",
+        "label": "Batch Details",
+        "fieldtype": "Section Break"
+      },
+      {
+        "fieldname": "batch_id",
+        "label": "Batch ID",
+        "fieldtype": "Data",
+        "unique": 1,
+        "reqd": 1,
+        "read_only": 1
+      },
+      {
+        "fieldname": "user",
+        "label": "User",
+        "fieldtype": "Link",
+        "options": "User",
+        "reqd": 1,
+        "read_only": 1
+      },
+      {
+        "fieldname": "status",
+        "label": "Status",
+        "fieldtype": "Select",
+        "options": "Processing\nCompleted\nCompleted with Errors\nFailed",
+        "default": "Processing",
+        "in_list_view": 1,
+        "in_standard_filter": 1
+      },
+      {
+        "fieldname": "column_break_1",
+        "fieldtype": "Column Break"
+      },
+      {
+        "fieldname": "start_time",
+        "label": "Start Time",
+        "fieldtype": "Datetime",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "end_time",
+        "label": "End Time",
+        "fieldtype": "Datetime"
+      },
+      {
+        "fieldname": "last_updated",
+        "label": "Last Updated",
+        "fieldtype": "Datetime"
+      },
+      {
+        "fieldname": "counts_section",
+        "label": "Processing Counts",
+        "fieldtype": "Section Break"
+      },
+      {
+        "fieldname": "total_count",
+        "label": "Total Count",
+        "fieldtype": "Int",
+        "default": 0,
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "processed_count",
+        "label": "Processed Count",
+        "fieldtype": "Int",
+        "default": 0,
+        "read_only": 1
+      },
+      {
+        "fieldname": "column_break_2",
+        "fieldtype": "Column Break"
+      },
+      {
+        "fieldname": "success_count",
+        "label": "Success Count",
+        "fieldtype": "Int",
+        "default": 0,
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "failed_count",
+        "label": "Failed Count",
+        "fieldtype": "Int",
+        "default": 0,
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "retry_section",
+        "label": "Retry Information",
+        "fieldtype": "Section Break",
+        "collapsible": 1
+      },
+      {
+        "fieldname": "retry_count",
+        "label": "Retry Count",
+        "fieldtype": "Int",
+        "default": 0,
+        "read_only": 1
+      },
+      {
+        "fieldname": "retry_success_count",
+        "label": "Retry Success Count",
+        "fieldtype": "Int",
+        "default": 0,
+        "read_only": 1
+      },
+      {
+        "fieldname": "column_break_3",
+        "fieldtype": "Column Break"
+      },
+      {
+        "fieldname": "retry_failed_count",
+        "label": "Retry Failed Count",
+        "fieldtype": "Int",
+        "default": 0,
+        "read_only": 1
+      },
+      {
+        "fieldname": "details_section",
+        "label": "Details",
+        "fieldtype": "Section Break",
+        "collapsible": 1,
+        "collapsible_depends_on": "filters"
+      },
+      {
+        "fieldname": "filters",
+        "label": "Filters Used",
+        "fieldtype": "Long Text",
+        "read_only": 1
+      },
+      {
+        "fieldname": "failed_parties",
+        "label": "Failed Parties Details",
+        "fieldtype": "Long Text",
+        "read_only": 1
+      }
+    ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-08-02 22:09:11.880192",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "WhatsApp Batch Processing",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
