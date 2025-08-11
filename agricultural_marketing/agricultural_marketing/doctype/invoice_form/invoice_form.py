@@ -30,6 +30,7 @@ class InvoiceForm(Document):
             self.pamper = pamper_name[0].pamper 
         else:
             pass
+        validate_customer_credit_limit(self, "validate")
 
     def on_submit(self):
         self.make_gl_entries()
@@ -1267,3 +1268,644 @@ def get_item_commission_percentage(item):
 
     # Get the percentage from the Agriculture Settings single doc
     return frappe.get_single("Agriculture Settings").get("customer_commission_percentage", 0)
+
+
+import frappe
+from frappe import _
+from frappe.utils import flt, formatdate
+from erpnext.accounts.party import get_party_account
+from erpnext.accounts.utils import get_balance_on
+
+@frappe.whitelist()
+def get_customer_balance_with_drafts(customer, company, date=None, exclude_invoice=None):
+    """
+    Get customer balance including ERPNext standard balance plus draft amounts
+    """
+    if not date:
+        date = frappe.utils.today()
+    
+    # Get standard ERPNext customer balance (submitted documents only)
+    standard_balance = get_balance_on(
+        party_type="Customer", 
+        party=customer, 
+        company=company,
+        date=date
+    )
+    frappe.errprint(f"standard_balance :{standard_balance}")
+    # Get draft Invoice Form balance
+    draft_invoice_balance = get_draft_invoice_form_balance(customer, exclude_invoice)
+    frappe.errprint(f"draft_invoice_balance :{draft_invoice_balance}")
+    # Get draft Payments and Receipts balance
+    draft_payment_balance = get_draft_payments_receipts_balance(customer)
+    frappe.errprint(f"draft_payment_balance :{draft_payment_balance}")
+    # Calculate total balance
+    total_balance = standard_balance + draft_invoice_balance - draft_payment_balance
+    
+    return {
+        "standard_balance": standard_balance,
+        "draft_invoice_balance": draft_invoice_balance,
+        "draft_payment_balance": draft_payment_balance,
+        "total_balance": total_balance
+    }
+
+def get_draft_invoice_form_balance(customer, exclude_invoice=None):
+    """
+    Get total amount from draft Invoice Form documents for a customer
+    Sum amounts from items where customer matches
+    """
+    conditions = ["inv.docstatus = 0", "ifi.customer = %s"]
+    values = [customer]
+    
+    # Exclude current invoice if specified
+    if exclude_invoice:
+        conditions.append("inv.name != %s")
+        values.append(exclude_invoice)
+    
+    result = frappe.db.sql("""
+        SELECT COALESCE(SUM(ifi.total), 0) as total
+        FROM `tabInvoice Form` inv
+        INNER JOIN `tabInvoice Form Item` ifi ON inv.name = ifi.parent
+        WHERE {conditions}
+    """.format(conditions=" AND ".join(conditions)), values)
+    
+    return flt(result[0][0] if result else 0)
+
+def get_submitted_invoice_form_balance(customer):
+    """
+    Get total amount from submitted Invoice Form documents for a customer
+    Sum amounts from items where customer matches
+    """
+    result = frappe.db.sql("""
+        SELECT COALESCE(SUM(ifi.total), 0) as total
+        FROM `tabInvoice Form` inv
+        INNER JOIN `tabInvoice Form Item` ifi ON inv.name = ifi.parent
+        WHERE inv.docstatus = 1 AND ifi.customer = %s
+    """, [customer])
+    
+    return flt(result[0][0] if result else 0)
+
+def get_draft_payments_receipts_balance(customer):
+    """
+    Get total payment/receipt amounts from draft Payments and Receipts for a customer
+    """
+    # Get all draft payment references for the customer
+    result = frappe.db.sql("""
+        SELECT 
+            pr.payment_type,
+            COALESCE(SUM(prr.amount), 0) as total_amount
+        FROM `tabPayments and Receipts` pr
+        INNER JOIN `tabPayments Receipts Reference` prr ON pr.name = prr.parent
+        WHERE pr.docstatus = 0 
+        AND prr.party_type = 'Customer' 
+        AND prr.party = %s
+        GROUP BY pr.payment_type
+    """, [customer], as_dict=True)
+    
+    total_payments = 0  # Money going out (increases customer balance)
+    total_receipts = 0  # Money coming in (decreases customer balance)
+    
+    for row in result:
+        if row.payment_type == "Pay":
+            total_payments += flt(row.total_amount)
+        elif row.payment_type == "Receive":
+            total_receipts += flt(row.total_amount)
+    
+    # Net effect: receipts reduce balance, payments increase balance
+    return total_receipts - total_payments
+
+def get_submitted_payments_receipts_balance(customer, company):
+    """
+    Get balance from submitted Payments and Receipts (these create standard GL entries)
+    Note: This is already included in standard ERPNext balance via GL entries
+    """
+    # This function is for reference only - submitted P&R create GL entries
+    # which are already included in get_balance_on() function
+    
+    result = frappe.db.sql("""
+        SELECT 
+            pr.payment_type,
+            COALESCE(SUM(prr.amount), 0) as total_amount
+        FROM `tabPayments and Receipts` pr
+        INNER JOIN `tabPayments Receipts Reference` prr ON pr.name = prr.parent
+        WHERE pr.docstatus = 1 
+        AND prr.party_type = 'Customer' 
+        AND prr.party = %s
+        AND pr.company = %s
+        GROUP BY pr.payment_type
+    """, [customer, company], as_dict=True)
+    
+    return result
+
+@frappe.whitelist()
+def check_customer_credit_limit_detailed(customer, company, current_invoice_amount=0, exclude_invoice=None):
+    """
+    Check customer credit limit with detailed breakdown
+    """
+    # Get customer credit limit for the specific company
+    credit_limit = get_customer_credit_limit(customer, company)
+    frappe.errprint(f"credit_limit{credit_limit}")
+    
+    if credit_limit <= 0:
+        return {
+            "has_credit_limit": False,
+            "message": "No credit limit set for this customer and company"
+        }
+    
+    # Get detailed balance breakdown
+    balance_details = get_customer_balance_with_drafts(
+        customer, company, exclude_invoice=exclude_invoice
+    )
+    
+    current_invoice_amount = flt(current_invoice_amount)
+    total_exposure = balance_details["total_balance"] + current_invoice_amount
+    
+    # Calculate available credit and excess
+    available_credit = credit_limit - balance_details["total_balance"]
+    excess_amount = total_exposure - credit_limit
+    
+    is_over_limit = total_exposure > credit_limit
+    
+    return {
+        "has_credit_limit": True,
+        "credit_limit": credit_limit,
+        "standard_balance": balance_details["standard_balance"],
+        "draft_invoice_balance": balance_details["draft_invoice_balance"],
+        "draft_payment_balance": balance_details["draft_payment_balance"],
+        "total_current_balance": balance_details["total_balance"],
+        "current_invoice_amount": current_invoice_amount,
+        "total_exposure": total_exposure,
+        "available_credit": available_credit,
+        "excess_amount": excess_amount if is_over_limit else 0,
+        "is_over_limit": is_over_limit,
+        "credit_utilization_percent": (total_exposure / credit_limit * 100) if credit_limit > 0 else 0
+    }
+
+def get_customer_credit_limit(customer, company):
+    """
+    Get customer credit limit for specific company from Customer Credit Limit table
+    """
+    credit_limit = frappe.db.get_value(
+        "Customer Credit Limit",
+        {
+            "parent": customer,
+            "company": company
+        },
+        "credit_limit"
+    )
+    
+    return flt(credit_limit or 0)
+
+def check_bypass_credit_limit(customer, company):
+    """
+    Check if credit limit bypass is enabled for customer-company combination
+    """
+    bypass = frappe.db.get_value(
+        "Customer Credit Limit",
+        {
+            "parent": customer,
+            "company": company
+        },
+        "bypass_credit_limit_check"
+    )
+    
+    return bypass == 1
+
+def get_invoice_total_for_customer(doc, customer):
+    """
+    Calculate total amount for a specific customer from invoice items
+    """
+    customer_total = 0
+    
+    if doc.items:
+        for item in doc.items:
+            if item.customer == customer:
+                customer_total += flt(item.total or 0)
+    
+    return customer_total
+
+def get_all_customers_from_invoice(doc):
+    """
+    Get list of all unique customers from invoice items
+    """
+    customers = set()
+    
+    if doc.items:
+        for item in doc.items:
+            if item.customer:
+                customers.add(item.customer)
+    
+    return list(customers)
+
+def validate_customer_credit_limit(doc, method):
+    """
+    Main validation function - validates each customer separately
+    """
+    
+    
+    # Get all customers from invoice items
+    customers = get_all_customers_from_invoice(doc)
+    
+    if not customers:
+        return
+    
+    validation_errors = []
+    
+    # Validate each customer separately
+    for customer in customers:
+        customer_invoice_total = get_invoice_total_for_customer(doc, customer)
+        
+        if customer_invoice_total <= 0:
+            continue
+            
+        # Check if credit limit bypass is enabled
+        if check_bypass_credit_limit(customer, doc.company):
+            continue
+        
+        # Check credit limit for this customer
+        credit_check = check_customer_credit_limit_detailed(
+            customer=customer,
+            company=doc.company,
+            current_invoice_amount=customer_invoice_total,
+            exclude_invoice=doc.name
+        )
+        
+        if not credit_check["has_credit_limit"]:
+            continue
+        
+        if credit_check["is_over_limit"]:
+            customer_name = frappe.db.get_value("Customer", customer, "customer_name") or customer
+            validation_errors.append({
+                "customer": customer,
+                "customer_name": customer_name,
+                "customer_invoice_total": customer_invoice_total,
+                "credit_check": credit_check
+            })
+    
+    # If any customer exceeds credit limit, show all errors
+    # Pass the invoice name to the error function
+    if validation_errors:
+        invoice_name = doc.name if hasattr(doc, 'name') and doc.name else "New Invoice"
+        show_multiple_customer_credit_errors(validation_errors, doc.company, invoice_name=invoice_name)
+
+
+def show_multiple_customer_credit_errors(validation_errors, company, invoice_name=None):
+    """
+    Display credit limit errors for multiple customers
+    """
+    def format_currency(amount):
+        return frappe.format_value(amount, {"fieldtype": "Currency"})
+    
+    # Get the setting to show details or not - with proper debugging
+    show_details = frappe.db.get_single_value("Agriculture Settings", "show_customer_credit_details")
+    
+    # Debug the setting value
+    frappe.errprint(f"Debug - show_customer_credit_details setting value: {show_details}")
+    frappe.errprint(f"Debug - show_customer_credit_details type: {type(show_details)}")
+    
+    # Ensure proper boolean evaluation
+    # The setting might be returning 1/0 instead of True/False, or might be None
+    if show_details is None:
+        show_details = False
+    elif show_details in [1, "1", True, "true", "True"]:
+        show_details = True
+    else:
+        show_details = False
+    
+    frappe.errprint(f"Debug - Final show_details value: {show_details}")
+    
+    if len(validation_errors) == 1:
+        # Single customer error
+        error = validation_errors[0]
+        credit_check = error["credit_check"]
+        
+        if show_details:
+            # Show detailed information
+            header = _("Credit Limit Exceeded")
+            error_message = _("""
+            <div style=\"font-family: Arial, sans-serif;\">
+                <h4 style=\"color: #d73527; margin-bottom: 15px;\">{header}</h4>
+                <table style=\"width: 100%; border-collapse: collapse;\">
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Invoice:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{invoice_name}</td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Customer:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{customer_name}</td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Company:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{company}</td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Credit Limit:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{credit_limit}</td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Current Balance (ERPNext):</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{standard_balance}</td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Draft Invoices:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{draft_invoice_balance}</td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Draft Payments/Receipts:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{draft_payment_balance}</td>
+                    </tr>
+                    <tr style=\"background-color: #f8f9fa;\">
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Total Current Balance:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>{total_current_balance}</strong></td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Customer's Items in Invoice:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\">{current_invoice}</td>
+                    </tr>
+                    <tr style=\"background-color: #fff2f0;\">
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>Total Exposure:</strong></td>
+                        <td style=\"padding: 5px; border-bottom: 1px solid #ddd;\"><strong>{total_exposure}</strong></td>
+                    </tr>
+                    <tr style=\"background-color: #ffebe9; color: #d73527;\">
+                        <td style=\"padding: 5px;\"><strong>Excess Amount:</strong></td>
+                        <td style=\"padding: 5px;\"><strong>{excess_amount}</strong></td>
+                    </tr>
+                </table>
+            </div>
+            """).format(
+                header=_("Credit Limit Exceeded"),
+                invoice_name=invoice_name or "New Invoice",
+                customer_name=error["customer_name"],
+                company=company,
+                credit_limit=format_currency(credit_check["credit_limit"]),
+                standard_balance=format_currency(credit_check["standard_balance"]),
+                draft_invoice_balance=format_currency(credit_check["draft_invoice_balance"]),
+                draft_payment_balance=format_currency(credit_check["draft_payment_balance"]),
+                total_current_balance=format_currency(credit_check["total_current_balance"]),
+                current_invoice=format_currency(credit_check["current_invoice_amount"]),
+                total_exposure=format_currency(credit_check["total_exposure"]),
+                excess_amount=format_currency(credit_check["excess_amount"]) 
+            )
+            frappe.throw(error_message, title=_("Credit Limit Exceeded"))
+        else:
+            # Show only basic info: invoice, customer and excess amount
+            simple_message = _(
+                "<div style=\"font-family: Arial, sans-serif;\">"
+                "<h4 style=\"color: #d73527; margin-bottom: 15px;\">Credit Limit Exceeded</h4>"
+                "<table style=\"width: 100%; border-collapse: collapse;\">"
+                "<tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Invoice:</strong></td>"
+                "<td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{invoice}</td></tr>"
+                "<tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Customer:</strong></td>"
+                "<td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{customer}</td></tr>"
+                "<tr style=\"background-color: #ffebe9; color: #d73527;\">"
+                "<td style=\"padding: 8px;\"><strong>Excess Amount:</strong></td>"
+                "<td style=\"padding: 8px;\"><strong>{excess}</strong></td></tr>"
+                "</table></div>"
+            ).format(
+                invoice=invoice_name or "New Invoice",
+                customer=error["customer_name"],
+                excess=format_currency(credit_check["excess_amount"]) 
+            )
+            frappe.throw(simple_message, title=_("Credit Limit Exceeded"))
+    
+    else:
+        # Multiple customers error
+        if show_details:
+            # Show detailed information for multiple customers
+            error_html = f"""
+            <div style="font-family: Arial, sans-serif;">
+                <h4 style="color: #d73527; margin-bottom: 15px;">Credit Limit Exceeded for Multiple Customers</h4>
+                <p style="margin-bottom: 15px;"><strong>Invoice:</strong> {invoice_name or "New Invoice"}</p>
+                <p style="margin-bottom: 15px;">The following customers will exceed their credit limits:</p>
+            """
+            
+            for i, error in enumerate(validation_errors, 1):
+                credit_check = error["credit_check"]
+                error_html += f"""
+                <div style="margin-bottom: 20px; border: 1px solid #ffcdd2; padding: 10px; background-color: #fff5f5;">
+                    <h5 style="color: #d73527; margin: 0 0 10px 0;">{i}. {error["customer_name"]}</h5>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <tr>
+                            <td style="padding: 3px; width: 40%;">Credit Limit:</td>
+                            <td style="padding: 3px;"><strong>{format_currency(credit_check["credit_limit"])}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 3px;">Current Balance:</td>
+                            <td style="padding: 3px;">{format_currency(credit_check["total_current_balance"])}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 3px;">Items in Invoice:</td>
+                            <td style="padding: 3px;">{format_currency(error["customer_invoice_total"])}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 3px;">Total Exposure:</td>
+                            <td style="padding: 3px;">{format_currency(credit_check["total_exposure"])}</td>
+                        </tr>
+                        <tr style="background-color: #ffebe9;">
+                            <td style="padding: 3px;"><strong>Excess Amount:</strong></td>
+                            <td style="padding: 3px;"><strong style="color: #d73527;">{format_currency(credit_check["excess_amount"])}</strong></td>
+                        </tr>
+                    </table>
+                </div>
+                """
+            
+            error_html += "</div>"
+            
+            frappe.throw(error_html, title=_("Multiple Credit Limits Exceeded"))
+        else:
+            # Show only basic info for multiple customers
+            error_html = f"""
+            <div style="font-family: Arial, sans-serif;">
+                <h4 style="color: #d73527; margin-bottom: 15px;">Credit Limit Exceeded for Multiple Customers</h4>
+                <p style="margin-bottom: 15px;"><strong>Invoice:</strong> {invoice_name or "New Invoice"}</p>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Customer</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Excess Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            
+            for error in validation_errors:
+                credit_check = error["credit_check"]
+                error_html += f"""
+                        <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{error["customer_name"]}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: #d73527; font-weight: bold;">
+                                {format_currency(credit_check["excess_amount"])}
+                            </td>
+                        </tr>
+                """
+            
+            error_html += """
+                    </tbody>
+                </table>
+            </div>
+            """
+            
+            frappe.throw(error_html, title=_("Multiple Credit Limits Exceeded"))
+
+
+# Additional debugging function to check the setting
+@frappe.whitelist()
+def debug_credit_limit_setting():
+    """
+    Debug function to check the credit limit setting
+    """
+    try:
+        # Check if the doctype exists
+        if not frappe.db.exists("DocType", "Agriculture Settings"):
+            return {"error": "Agriculture Settings DocType does not exist"}
+        
+        # Check if the field exists in the doctype
+        field_exists = frappe.db.exists("DocField", {
+            "parent": "Agriculture Settings",
+            "fieldname": "show_customer_credit_details"
+        })
+        
+        if not field_exists:
+            return {"error": "Field 'show_customer_credit_details' does not exist in Agriculture Settings"}
+        
+        # Get the setting value
+        setting_value = frappe.db.get_single_value("Agriculture Settings", "show_customer_credit_details")
+        
+        # Get the raw value from database
+        raw_value = frappe.db.sql("""
+            SELECT show_customer_credit_details 
+            FROM `tabAgriculture Settings` 
+            LIMIT 1
+        """, as_dict=True)
+        
+        return {
+            "field_exists": bool(field_exists),
+            "setting_value": setting_value,
+            "setting_type": type(setting_value).__name__,
+            "raw_db_value": raw_value[0] if raw_value else None,
+            "boolean_evaluation": bool(setting_value),
+            "is_checked": setting_value in [1, "1", True, "true", "True"]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# Alternative approach - use get_single instead of get_single_value
+    
+@frappe.whitelist()
+def get_multiple_customers_credit_summary(customers, company, invoice_items=None):
+    """
+    Get credit summary for multiple customers
+    customers: comma-separated string or list of customer names
+    invoice_items: JSON string of items with customer and total fields
+    """
+    import json
+    
+    if isinstance(customers, str):
+        customers = [c.strip() for c in customers.split(',') if c.strip()]
+    
+    if isinstance(invoice_items, str):
+        invoice_items = json.loads(invoice_items)
+    
+    results = []
+    
+    for customer in customers:
+        # Calculate customer's total from invoice items
+        customer_total = 0
+        if invoice_items:
+            for item in invoice_items:
+                if item.get('customer') == customer:
+                    customer_total += flt(item.get('total', 0))
+        
+        # Get credit check for this customer
+        credit_check = check_customer_credit_limit_detailed(
+            customer=customer,
+            company=company,
+            current_invoice_amount=customer_total
+        )
+        
+        results.append({
+            "customer": customer,
+            "customer_total": customer_total,
+            "credit_data": credit_check
+        })
+    
+    return results
+
+@frappe.whitelist()
+def validate_invoice_multiple_customers(doc_json):
+    """
+    Validate credit limits for all customers in an invoice
+    Used for client-side validation
+    """
+    import json
+    
+    if isinstance(doc_json, str):
+        doc = json.loads(doc_json)
+    else:
+        doc = doc_json
+    
+    if not doc.get('company'):
+        return {"valid": True, "message": "No company specified"}
+    
+    # Get all customers from items
+    customers = set()
+    customer_totals = {}
+    
+    for item in doc.get('items', []):
+        if item.get('customer'):
+            customer = item['customer']
+            customers.add(customer)
+            if customer not in customer_totals:
+                customer_totals[customer] = 0
+            customer_totals[customer] += flt(item.get('total', 0))
+    
+    if not customers:
+        return {"valid": True, "message": "No customers in items"}
+    
+    # Validate each customer
+    violations = []
+    
+    for customer in customers:
+        customer_total = customer_totals[customer]
+        
+        if customer_total <= 0:
+            continue
+            
+        # Check bypass
+        if check_bypass_credit_limit(customer, doc['company']):
+            continue
+        
+        # Check credit limit
+        credit_check = check_customer_credit_limit_detailed(
+            customer=customer,
+            company=doc['company'],
+            current_invoice_amount=customer_total,
+            exclude_invoice=doc.get('name')
+        )
+        
+        if credit_check.get('is_over_limit'):
+            customer_name = frappe.db.get_value("Customer", customer, "customer_name") or customer
+            violations.append({
+                "customer": customer,
+                "customer_name": customer_name,
+                "excess_amount": credit_check['excess_amount'],
+                "credit_limit": credit_check['credit_limit'],
+                "customer_total": customer_total
+            })
+    
+    if violations:
+        return {
+            "valid": False,
+            "violations": violations,
+            "message": f"Credit limit exceeded for {len(violations)} customer(s)"
+        }
+    
+    return {"valid": True, "message": "All customers within credit limits"}
+
+@frappe.whitelist()
+def get_customer_credit_summary_api(customer, company):
+    """
+    API endpoint to get customer credit summary for client-side usage
+    """
+    return check_customer_credit_limit_detailed(customer, company)

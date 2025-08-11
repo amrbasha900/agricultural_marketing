@@ -1,0 +1,84 @@
+{
+    "actions": [],
+    "creation": "2025-08-09 20:20:25.256661",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+     "pdf_generator_log",
+     "party_name",
+     "status",
+     "column_break_1",
+     "pdf_file",
+     "whatsapp_status",
+     "whatsapp_message_id",
+     "error_message"
+    ],
+    "fields": [
+     {
+      "fieldname": "pdf_generator_log",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "PDF Generator Log",
+      "options": "PDF Generator Log",
+      "reqd": 1
+     },
+     {
+      "fieldname": "party_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Party Name",
+      "read_only": 1
+     },
+     {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Queued\nProcessing\nCompleted\nFailed",
+      "read_only": 1
+     },
+     {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+     },
+     {
+      "fieldname": "pdf_file",
+      "fieldtype": "Data",
+      "label": "PDF File URL",
+      "read_only": 1
+     },
+     {
+      "fieldname": "whatsapp_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "WhatsApp Status",
+      "options": "Not Created\nQueued\nSent\nDelivered\nFailed\nRead",
+      "read_only": 1
+     },
+     {
+      "fieldname": "whatsapp_message_id",
+      "fieldtype": "Link",
+      "label": "WhatsApp Message",
+      "options": "WhatsApp Messages"
+     },
+     {
+      "fieldname": "error_message",
+      "fieldtype": "Text",
+      "label": "Error Message",
+      "read_only": 1
+     }
+    ],
+    "index_web_pages_for_search": 1,
+    "istable": 1,
+    "links": [],
+    "modified": "2025-08-09 22:05:05.591824",
+    "modified_by": "Administrator",
+    "module": "Agricultural Marketing",
+    "name": "Statement Generation History Item",
+    "owner": "Administrator",
+    "permissions": [],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": [],
+    "track_changes": 1
+   }

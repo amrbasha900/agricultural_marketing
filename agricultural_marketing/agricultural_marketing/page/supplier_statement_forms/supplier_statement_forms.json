@@ -7,9 +7,9 @@
  "modified": "2025-07-30 17:13:19.661902",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
- "name": "supplier_statement_forms",
+ "name": "supplier-statement-forms",
  "owner": "Administrator",
- "page_name": "supplier_statement_forms",
+ "page_name": "supplier-statement-forms",
  "roles": [
   {
    "role": "Accounts Manager"

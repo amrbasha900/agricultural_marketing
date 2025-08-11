@@ -41,7 +41,8 @@
   "delay_between_batches_seconds",
   "delay_between_messages_seconds",
   "enable_auto_cleanup",
-  "cleanup_after_days"
+  "cleanup_after_days",
+  "show_customer_credit_details"
  ],
  "fields": [
   {
@@ -268,6 +269,12 @@
    "fieldname": "cleanup_after_days",
    "fieldtype": "Int",
    "label": "Cleanup After Days"
+  },
+  {
+   "default": "0",
+   "fieldname": "show_customer_credit_details",
+   "fieldtype": "Check",
+   "label": "Show Customer Credit Limit Details"
   }
  ],
  "grid_page_length": 50,

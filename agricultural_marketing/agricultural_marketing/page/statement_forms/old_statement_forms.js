@@ -1,15 +1,7 @@
-// Initialize the page object if it doesn't exist
-if (!frappe.pages) {
-    frappe.pages = {};
-}
-if (!frappe.pages['supplier-statement-forms']) {
-    frappe.pages['supplier-statement-forms'] = {};
-}
-
-frappe.pages['supplier-statement-forms'].on_page_load = function(wrapper) {
+frappe.pages['statement-forms'].on_page_load = function(wrapper) {
 	var page = frappe.ui.make_app_page({
 		parent: wrapper,
-		title: __('Supplier Statement Forms'),
+		title: __('Statement Forms'),
 		single_column: true
 	});
 
@@ -98,52 +90,87 @@ frappe.pages['supplier-statement-forms'].on_page_load = function(wrapper) {
         }
     });
 
-	// Simplified Party Type field - fixed to Supplier
 	let partyTypeField = page.add_field({
 	    label: 'Party Type',
 	    fieldtype: 'Link',
 	    fieldname: 'party_type',
 	    options: 'Party Type',
-		default: 'Supplier',
 	    reqd: 1,
-		read_only: 1
+	    get_query: function() {
+	        return {
+	            filters: {
+                    name: ['in', Object.keys(frappe.boot.party_account_types)],
+	            }
+	        }
+	    },
+	    change() {
+	        let partyField;
+	        let partyGroupField;
+            if (!partyTypeField.get_value()) {
+                partyField = page.fields_dict['party']
+                partyGroupField = page.fields_dict['party_group']
+                if (partyGroupField) {
+                    partyGroupField.set_value('');
+                    partyGroupField.$wrapper.hide();
+                }
+                if (partyField) {
+                    partyField.set_value('');
+                    partyField.$wrapper.hide();
+                }
+            } else {
+                partyField = page.fields_dict['party']
+                partyGroupField = page.fields_dict['party_group']
+                if (!partyGroupField) {
+                    partyGroupField = page.add_field({
+                        label: 'Party Group',
+                        fieldtype: 'Link',
+                        fieldname: 'party_group'
+                    });
+                    partyGroupField.$wrapper.removeClass('col-md-2').addClass('col-md-2');
+                }
+                if (!partyField) {
+                    partyField = page.add_field({
+                        label: 'Party',
+                        fieldtype: 'Link',
+                        fieldname: 'party'
+                    });
+                }
+                    partyField.$wrapper.removeClass('col-md-2').addClass('col-md-3');
+                if (partyGroupField) {
+                    partyGroupField.set_value('');
+                    partyGroupField.$wrapper.show();
+                    partyGroupField.df.options = partyTypeField.get_value() + ' Group';
+                }
+                if (partyField) {
+                    partyField.set_value('');
+                    partyField.$wrapper.show();
+                    partyField.df.options = partyTypeField.get_value();
+                    partyField.df.get_query = () => {
+                        var field = (partyGroupField.df.options == 'Customer Group') ? 'customer_group' :
+                        'supplier_group'
+                        if (partyTypeField.get_value() == 'Customer') {
+                            var filters = {is_farmer:0}
+                            if (partyGroupField.get_value()) {
+                                filters[field] = partyGroupField.get_value()
+                            }
+                            return {
+                                filters: filters
+                            }
+                        } else {
+                            var filters = {}
+                            if (partyGroupField.get_value()) {
+                                filters[field] = partyGroupField.get_value()
+                            }
+                            return {
+                                filters: filters
+                            }
+                        }
+                    }
+                }
+            }
+	    }
 	});
     partyTypeField.$wrapper.removeClass('col-md-2').addClass('col-md-2');
-
-    // Supplier Group field
-    let supplierGroupField = page.add_field({
-        label: 'Supplier Group',
-        fieldtype: 'Link',
-        fieldname: 'supplier_group',
-        options: 'Supplier Group'
-    });
-    supplierGroupField.$wrapper.removeClass('col-md-2').addClass('col-md-2');
-
-    // Supplier field
-    let supplierField = page.add_field({
-        label: 'Supplier',
-        fieldtype: 'Link',
-        fieldname: 'party',
-        options: 'Supplier',
-        get_query: function() {
-            var filters = {};
-            if (supplierGroupField.get_value()) {
-                filters['supplier_group'] = supplierGroupField.get_value();
-            }
-            return {
-                filters: filters
-            };
-        }
-    });
-    supplierField.$wrapper.removeClass('col-md-2').addClass('col-md-3');
-
-    // Update supplier field when supplier group changes
-    supplierGroupField.$input.on('change', function() {
-        if (supplierField) {
-            supplierField.set_value('');
-            supplierField.refresh();
-        }
-    });
 
     function get_reports(filters) {
         frappe.dom.freeze('Processing...');
@@ -153,7 +180,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function(wrapper) {
         }
         validateMandatoryFilters(final_filters);
         frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.get_reports',
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_reports',
             args : {
                 filters: final_filters
             },
@@ -206,7 +233,6 @@ frappe.pages['supplier-statement-forms'].on_page_load = function(wrapper) {
             })
         }
     }
-    
     function sendWhatsAppMsg(filters){
         frappe.dom.freeze(`<img src="/assets/agricultural_marketing/img/whatsapp.gif" >`);
         var final_filters = {};
@@ -220,7 +246,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function(wrapper) {
             return;
         }
         frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.task_msg_creation',
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.task_msg_creation',
             args: {
                 filters: final_filters
             },
@@ -235,7 +261,6 @@ frappe.pages['supplier-statement-forms'].on_page_load = function(wrapper) {
             }
         });
     }
-    
     let $btn = page.set_primary_action( __('Download Reports'), () => { get_reports(page.fields_dict) });
     let sendWhatsappBtn = page.set_secondary_action(__('Send WhatsApp Message'), () => {
         frappe.confirm(

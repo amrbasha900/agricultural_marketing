@@ -125,7 +125,7 @@
             border-bottom: 2px solid #333;
             padding: 5px 0;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 12px;
         }
 
         .amount-words {
@@ -249,10 +249,19 @@
         </div> -->
 
         <div class="row">
-            <div class="col-xs-12">
+            <div class="col-xs-6">
                 <div class="summary-line total-line">
                     <span>المجموع الكلي</span> :
-                    <span>{{(doc.grand_total - doc.total_commissions_and_taxes)|round(2)}}</span>
+                    <span>{{(doc.grand_total)|round(2)}}</span>
+                    <!-- <span>{{(doc.grand_total - doc.total_commissions_and_taxes)|round(2)}}</span> -->
+                </div>
+            </div>
+            <div class="col-xs-6">
+                <div class="summary-line total-line">
+                    {% if  doc.pamper %}
+                    <span>الدلال</span> :
+                    <span>{{ frappe.db.get_value("Customer", doc.pamper, "customer_name") or ''}}</span>
+                    {% endif %}
                 </div>
             </div>
         </div>

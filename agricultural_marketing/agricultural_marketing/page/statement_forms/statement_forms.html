@@ -102,9 +102,9 @@
             {% elif sum.statement == "Duration Payments" %}المدفوعات خلال الفترة 
             {% elif sum.statement %}{{sum.statement}}
             {% endif %}</td>
-        <td> {% if sum.debit %} {{ sum.debit }} {% endif %}</td>
-        <td> {% if sum.credit %} {{ sum.credit }} {% endif %}</td>
-        <td> {% if sum.balance %} {{ sum.balance }} {% endif %}</td>
+        <td> {% if sum.debit %} {{ sum.debit |float | round(2) }} {% endif %}</td>
+        <td> {% if sum.credit %} {{ sum.credit |float | round(2)}} {% endif %}</td>
+        <td> {% if sum.balance %} {{ sum.balance |float | round(2)}} {% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -137,10 +137,10 @@
         <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %}</td>
         {% if not filters.neglect_items %}
         <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
-        <td> {% if item.qty %} {{ item.qty }} {% endif %}</td>
-        <td> {% if item.price %} {{ item.price }} {% endif %}</td>
+        <td> {% if item.qty %} {{ item.qty |float  | round(2)}} {% endif %}</td>
+        <td> {% if item.price %} {{ item.price |float   | round(2)}} {% endif %}</td>
         {% endif %}
-        <td> {% if item.total %} {{ item.total }} {% endif %}</td>
+        <td> {% if item.total %} {{ item.total |float  | round(2)}} {% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -172,7 +172,7 @@
         <td> {% if payment.mop == "Receive" %}تسلم{% elif payment.mop == "Pay" %}دفع  {% elif payment.mop %}{{ _(payment.mop) }} {% endif %}</td>
         <td> {% if payment.payment_type %} {{ _(payment.payment_type) }} {% endif %}</td>
         <td> {% if payment.remarks %} {{ payment.remarks }} {% endif %}</td>
-        <td> {{ payment.paid_amount }}</td>
+        <td> {{ payment.paid_amount  |float | round(2)}}</td>
     </tr>
     {% endfor %}
     </tbody>

@@ -1,0 +1,170 @@
+{
+    "actions": [],
+    "autoname": "format:PDF-{party_type}-{####}",
+    "creation": "2025-08-03 19:15:25.256661",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+     "party_type",
+     "party_name",
+     "party_group",
+     "company",
+     "from_date",
+     "to_date",
+     "status",
+     "column_break_1",
+     "pdf_file",
+     "error_message",
+     "created_by",
+     "creation_time",
+     "completion_time",
+     "section_break_2",
+     "filters_json",
+     "whatsapp_sent",
+     "whatsapp_message_id",
+     "statement_generation_history",
+     "session_id"
+    ],
+    "fields": [
+     {
+      "fieldname": "party_type",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Party Type",
+      "options": "Party Type",
+      "reqd": 1
+     },
+     {
+      "fieldname": "party_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Party Name",
+      "reqd": 1
+     },
+     {
+      "fieldname": "party_group",
+      "fieldtype": "Data",
+      "label": "Party Group"
+     },
+     {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Company",
+      "options": "Company",
+      "reqd": 1
+     },
+     {
+      "fieldname": "from_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "From Date",
+      "reqd": 1
+     },
+     {
+      "fieldname": "to_date",
+      "fieldtype": "Date",
+      "label": "To Date"
+     },
+     {
+      "default": "Queued",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Queued\nProcessing\nCompleted\nFailed"
+     },
+     {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+     },
+     {
+      "fieldname": "pdf_file",
+      "fieldtype": "Attach",
+      "label": "PDF File"
+     },
+     {
+      "fieldname": "error_message",
+      "fieldtype": "Text",
+      "label": "Error Message"
+     },
+     {
+      "fieldname": "created_by",
+      "fieldtype": "Link",
+      "label": "Created By",
+      "options": "User"
+     },
+     {
+      "default": "now",
+      "fieldname": "creation_time",
+      "fieldtype": "Datetime",
+      "label": "Creation Time"
+     },
+     {
+      "fieldname": "completion_time",
+      "fieldtype": "Datetime",
+      "label": "Completion Time"
+     },
+     {
+      "fieldname": "section_break_2",
+      "fieldtype": "Section Break"
+     },
+     {
+      "fieldname": "filters_json",
+      "fieldtype": "Text",
+      "label": "Filters JSON"
+     },
+     {
+      "default": "0",
+      "fieldname": "whatsapp_sent",
+      "fieldtype": "Check",
+      "label": "WhatsApp Sent"
+     },
+     {
+      "fieldname": "whatsapp_message_id",
+      "fieldtype": "Data",
+      "label": "WhatsApp Message ID"
+     },
+     {
+      "fieldname": "statement_generation_history",
+      "fieldtype": "Link",
+      "label": "Statement Generation History",
+      "options": "Statement Generation History"
+     },
+     {
+      "fieldname": "session_id",
+      "fieldtype": "Data",
+      "label": "Session ID"
+     }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2025-08-09 22:04:05.591824",
+    "modified_by": "Administrator",
+    "module": "Agricultural Marketing",
+    "name": "PDF Generator Log",
+    "naming_rule": "Expression",
+    "owner": "Administrator",
+    "permissions": [
+     {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+     },
+     {
+      "read": 1,
+      "role": "All"
+     }
+    ],
+    "row_format": "Dynamic",
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": [],
+    "track_changes": 1
+   }

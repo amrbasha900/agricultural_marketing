@@ -126,6 +126,9 @@ doc_events = {
     "Supplier": {
         "after_insert": "agricultural_marketing.standard_doctypes.supplier.create_related_customer",
         "on_trash": "agricultural_marketing.standard_doctypes.supplier.delete_related_customer",
+        "on_update": "agricultural_marketing.standard_doctypes.supplier.sync_supplier_to_customer",
+        "after_rename": "agricultural_marketing.standard_doctypes.supplier.rename_customer_from_supplier",
+        
     },
     "Sales Invoice": {
         "on_cancel": "agricultural_marketing.standard_doctypes.sales_invoice.update_invoice_form",
@@ -133,6 +136,11 @@ doc_events = {
     },
     "WhatsApp Messages": {
         "on_change": "agricultural_marketing.standard_doctypes.whatsapp_messages.update_invoice_form",
+        "on_update": "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.update_statement_history_whatsapp_status",
+        "after_insert": "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.update_pdf_generator_log_on_whatsapp_creation"
+    },
+    "Statement Generation History": {
+        "validate": "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.validate_statement_generation_history"
     }
 }
 
@@ -156,15 +164,29 @@ doc_events = {
 # 		"agricultural_marketing.tasks.monthly"
 # 	],
 # }
-
 scheduler_events = {
     "daily": [
-        "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.cleanup_old_files"
+        "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.sync_whatsapp_statuses"
     ],
-    "hourly": [
-        "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.monitor_failed_batches"
-    ]
+    "weekly": [
+        "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.cleanup_old_pdf_logs"
+    ],
+    "cron": {
+        "* * * * *": [
+            "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.retry_all_queued_pdf_jobs"
+        ]
+    }
 }
+
+
+# scheduler_events = {
+#     "daily": [
+#         "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.cleanup_old_files"
+#     ],
+#     "hourly": [
+#         "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.monitor_failed_batches"
+#     ]
+# }
 
 # Testing
 # -------

@@ -30,3 +30,41 @@ def delete_related_customer(self, method):
         customer = frappe.get_doc("Customer", self.related_customer)
         customer.run_method("on_trash")
         frappe.delete_doc("Customer", self.related_customer, for_reload=True)
+
+
+import frappe
+
+def sync_supplier_to_customer(doc, method):
+    # Check if supplier has a linked customer
+    customer_link = doc.get("related_customer")  # change this to your actual fieldname
+    if not customer_link:
+        return
+
+    customer = frappe.get_doc("Customer", customer_link)
+
+    # Rename Customer if Supplier's name changed
+    if customer.name != doc.name:
+        # Rename customer document
+        frappe.rename_doc("Customer", customer.name, doc.name, merge=False)
+        customer = frappe.get_doc("Customer", doc.name)  # Re-fetch after rename
+
+    # Update customer_name if supplier_name changed
+    if customer.customer_name != doc.supplier_name:
+        customer.customer_name = doc.supplier_name
+        customer.save()
+
+def rename_customer_from_supplier(doc, method, old_name, new_name, merge=False):
+    # Get the old supplier document
+    old_doc = frappe.get_doc("Supplier", new_name)
+    
+    # Get linked customer
+    customer_link = old_doc.get("related_customer")  # Replace with your custom link field name
+
+    if not customer_link:
+        return
+
+    try:
+        # Rename the linked customer
+        frappe.rename_doc("Customer", customer_link, new_name, merge=merge)
+    except frappe.DuplicateEntryError:
+        frappe.throw(f"A Customer with name {new_name} already exists.")
