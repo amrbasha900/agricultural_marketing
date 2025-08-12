@@ -604,16 +604,30 @@ def task_msg_creation(filters):
 
 @frappe.whitelist()
 def lock_invoice_update():
-    invoices = frappe.db.get_all("Invoice Form", {"lock_update": 0}, "name")
-    if invoices:
-        for invoice in invoices:
-            frappe.db.set_value("Invoice Form", invoice.name, "lock_update", 1)
-        frappe.msgprint(_(f"{len(invoices)} Invoice Form locked for update"))
+    # Count invoices where lock_update is 0 or NULL
+    count = frappe.db.sql(
+        """
+        SELECT COUNT(*)
+        FROM `tabInvoice Form`
+        WHERE IFNULL(lock_update, 0) = 0
+        """
+    )[0][0]
+
+    if count:
+        # Bulk update to set lock_update = 1 for all matching rows
+        frappe.db.sql(
+            """
+            UPDATE `tabInvoice Form`
+            SET lock_update = 1
+            WHERE IFNULL(lock_update, 0) = 0
+            """
+        )
+        frappe.msgprint(_(f"{count} Invoice Form locked for update"))
     else:
         frappe.msgprint(_("No Invoice Form to lock for update"))
-        
+
     frappe.db.commit()
-    return {"success": f"Invoice Form locked for update"}
+    return {"success": "Invoice Form locked for update"}
 
 
 
