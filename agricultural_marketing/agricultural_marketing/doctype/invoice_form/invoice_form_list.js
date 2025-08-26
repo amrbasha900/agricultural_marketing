@@ -1,5 +1,6 @@
 // Method 1: Custom List View Button with Bulk PDF Download + Update Status (No Confirmation)
 frappe.listview_settings['Invoice Form'] = {
+    
     onload: function(listview) {
         // Add custom button to list view
         listview.page.add_inner_button('Print & Mark as Printed', () => {
@@ -82,5 +83,20 @@ frappe.listview_settings['Invoice Form'] = {
                 }
             });
         });
+    },add_fields: ["is_return", "return_against", "docstatus"],
+    get_indicator: function(doc) {
+        if (doc.is_return) {
+            if (doc.docstatus === 1) {
+                return [__("Return"), "red", "is_return,=,Yes|docstatus,=,1"];
+            } else if (doc.docstatus === 0) {
+                return [__("Return Draft"), "orange", "is_return,=,Yes|docstatus,=,0"];
+            }
+        } else {
+            if (doc.docstatus === 1) {
+                return [__("Submitted"), "green", "docstatus,=,1"];
+            } else if (doc.docstatus === 0) {
+                return [__("Draft"), "orange", "docstatus,=,0"];
+            }
+        }
     }
 };

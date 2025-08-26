@@ -20,12 +20,20 @@
   "customer",
   "column_break_dugc",
   "pamper",
+  "section_break_zwof",
+  "remark",
   "section_break_references",
   "bulk_invoice_reference",
   "couple_customer",
   "column_break_ref",
   "bulk_invoice_item_reference",
-  "has_commission_invoice"
+  "has_commission_invoice",
+  "return_details_section",
+  "returned_qty",
+  "column_break_efcg",
+  "available_qty",
+  "column_break_fjdz",
+  "original_item_idx"
  ],
  "fields": [
   {
@@ -153,12 +161,52 @@
    "fieldname": "couple_customer",
    "fieldtype": "Check",
    "label": "Couple Customer"
+  },
+  {
+   "fieldname": "return_details_section",
+   "fieldtype": "Section Break",
+   "label": "Return Details"
+  },
+  {
+   "fieldname": "returned_qty",
+   "fieldtype": "Float",
+   "label": "Returned Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_efcg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "available_qty",
+   "fieldtype": "Float",
+   "label": "Available for Return",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_fjdz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "original_item_idx",
+   "fieldtype": "Data",
+   "label": "Original Item Index",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_zwof",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-07-30 11:52:14.315337",
+ "modified": "2025-08-20 21:49:53.959068",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form Item",

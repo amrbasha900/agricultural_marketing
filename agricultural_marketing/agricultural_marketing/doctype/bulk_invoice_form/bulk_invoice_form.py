@@ -34,7 +34,12 @@ class BulkInvoiceForm(Document):
     #     # For existing documents that were updated, ensure all items have invoice forms
     #     if not self.is_new():
     #         self.auto_create_invoice_forms_for_unlinked_items()
-    
+
+    def before_submit(self):
+        for i in self.items:
+            if not i.reference_invoice_form:
+                frappe.throw(_('You Should Create Invoice Form For All Rows'))
+
     def handle_item_changes(self, old_doc):
         """Detect and handle changes in items table"""
         # Create dictionaries for easy lookup

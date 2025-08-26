@@ -24,7 +24,7 @@ frappe.ui.form.on("Bulk Invoice Form", {
     onload(frm) {
         // Set up filters on load
         setup_filters(frm);
-        if (frm.is_new()) {
+        if (frm.is_new() && !frm.doc.amended_from && !frm.doc.items.length > 1) {
             // Remove first empty row if exists
             if (frm.doc.items && frm.doc.items.length > 0) {
                 frm.doc.items.splice(0, 1);

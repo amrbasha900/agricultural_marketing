@@ -157,7 +157,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
         fieldtype: 'Date',
         fieldname: 'from_date',
         reqd: 1,
-        default: savedFilters.from_date || frappe.datetime.get_today(),
+        default: frappe.datetime.get_today(),
         change: saveFilters
     });
     fromDate.$wrapper.removeClass('col-md-2').addClass('col-md-2');
@@ -166,7 +166,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
         label: 'To Date',
         fieldtype: 'Date',
         fieldname: 'to_date',
-        default: savedFilters.to_date || frappe.datetime.get_today(),
+        default: frappe.datetime.get_today(),
         change: saveFilters
     });
     toDate.$wrapper.removeClass('col-md-2').addClass('col-md-2');

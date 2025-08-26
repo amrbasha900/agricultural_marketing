@@ -147,6 +147,7 @@ def create_commission_invoices(parties, posting_date, party_type):
     failed_invoices = []
     settings = frappe.get_single("Agriculture Settings")
     pos_profile = frappe.get_doc("POS Profile", settings.get("pos_profile"))
+    
     for party in parties:
         party_invoices = parties[party]
         customer = frappe.db.get_value("Supplier", party, "related_customer") if party_type == "Supplier" else party
@@ -155,17 +156,33 @@ def create_commission_invoices(parties, posting_date, party_type):
 
         item = (settings.get("supplier_commission_item") if party_type == "Supplier" else settings.get(
             "customer_commission_item")) or ''
-        try:
-            commission_invoice = frappe.new_doc("Sales Invoice")
-            commission_invoice.update({
-                "customer": customer,
-                "is_pos": 1,
-                "pos_profile": pos_profile.get("name"),
-                "posting_date": posting_date,
-                "is_commission_invoice": 1
-            })
-            for invoice in party_invoices:
-                if invoice.get("total"):
+        
+        # Group invoices by return status
+        regular_invoices = []
+        return_invoices = []
+        
+        for invoice in party_invoices:
+            if invoice.get("total"):
+                # Check if invoice is a return invoice
+                is_return = frappe.db.get_value("Invoice Form", invoice.get("invoice_id"), "is_return")
+                if is_return:
+                    return_invoices.append(invoice)
+                else:
+                    regular_invoices.append(invoice)
+        
+        # Create commission invoice for regular invoices
+        if regular_invoices:
+            try:
+                commission_invoice = frappe.new_doc("Sales Invoice")
+                commission_invoice.update({
+                    "customer": customer,
+                    "is_pos": 1,
+                    "pos_profile": pos_profile.get("name"),
+                    "posting_date": posting_date,
+                    "is_commission_invoice": 1
+                })
+                
+                for invoice in regular_invoices:
                     commission_invoice.append("items", {
                         "item_code": item,
                         "description": item + "\n" + invoice.get("invoice_id", ""),
@@ -174,39 +191,114 @@ def create_commission_invoices(parties, posting_date, party_type):
                         "invoice_form": invoice.get("invoice_id"),
                         "income_account": frappe.db.get_value("Item", item, "item_defaults.income_account")
                     })
-            default_tax_template = get_tax_template(settings)
-            commission_invoice.update({
-                "taxes_and_charges": default_tax_template
-            })
-            commission_invoice.save()
-            for mop in pos_profile.get("payments", []):
-                if mop.default:
-                    default_mop = mop.mode_of_payment
+                
+                default_tax_template = get_tax_template(settings)
+                commission_invoice.update({
+                    "taxes_and_charges": default_tax_template
+                })
+                commission_invoice.save()
+                
+                for mop in pos_profile.get("payments", []):
+                    if mop.default:
+                        default_mop = mop.mode_of_payment
 
-            commission_invoice.append("payments", {
-                "mode_of_payment": default_mop,
-                "amount": commission_invoice.grand_total
-            })
-            commission_invoice.save()
+                commission_invoice.append("payments", {
+                    "mode_of_payment": default_mop,
+                    "amount": commission_invoice.grand_total
+                })
+                commission_invoice.save()
 
-            for invoice in party_invoices:
-                invoice_form_doc = frappe.get_doc("Invoice Form", invoice.get("invoice_id"))
-                if party_type == "Supplier":
-                    frappe.db.set_value("Invoice Form", invoice_form_doc.name, "has_supplier_commission_invoice", 1)
-                else:
-                    for line in invoice_form_doc.items:
-                        if line.get("customer") == customer:
-                            frappe.db.set_value("Invoice Form Item", line.name, "has_commission_invoice", 1)
-        except Exception as e:
-            frappe.log_error(title="Creation Commission Invoice Faild", message=frappe.get_traceback())
-            failed_invoices.append({
-                "invoice_id": invoice.get("invoice_id"),
-                "total": invoice.get("total")
-            })
-            continue
+                # Update invoice form records
+                for invoice in regular_invoices:
+                    invoice_form_doc = frappe.get_doc("Invoice Form", invoice.get("invoice_id"))
+                    if party_type == "Supplier":
+                        frappe.db.set_value("Invoice Form", invoice_form_doc.name, "has_supplier_commission_invoice", 1)
+                    else:
+                        for line in invoice_form_doc.items:
+                            if line.get("customer") == customer:
+                                frappe.db.set_value("Invoice Form Item", line.name, "has_commission_invoice", 1)
+                                
+            except Exception as e:
+                frappe.log_error(title="Creation Commission Invoice Failed (Regular)", message=frappe.get_traceback())
+                for invoice in regular_invoices:
+                    failed_invoices.append({
+                        "invoice_id": invoice.get("invoice_id"),
+                        "total": invoice.get("total")
+                    })
+        
+        # Create commission invoice for return invoices
+        if return_invoices:
+            try:
+                commission_invoice = frappe.new_doc("Sales Invoice")
+                commission_invoice.update({
+                    "customer": customer,
+                    "is_pos": 1,
+                    "pos_profile": pos_profile.get("name"),
+                    "posting_date": posting_date,
+                    "is_commission_invoice": 1,
+                    "is_return": 1
+                })
+                
+                # Add return against references
+                for invoice in return_invoices:
+                    existing_commission_invoice_list = []
+                    return_against = frappe.db.get_value("Invoice Form", invoice.get("invoice_id"), "return_against")
+                    if return_against:
+                        existing_commission_invoice = frappe.db.get_value("Sales Invoice Item", 
+                                                                        {"invoice_form": return_against}, 
+                                                                        "parent")
+                        if existing_commission_invoice and existing_commission_invoice not in existing_commission_invoice_list:
+                            commission_invoice.append("custom_return_against_additional_references", {
+                                "sales_invoice": existing_commission_invoice,
+                            })
+                            commission_invoice.custom_return_reason = frappe.db.get_value("Invoice Form", invoice.get("invoice_id"), "return_reason")
+                            existing_commission_invoice_list.append(existing_commission_invoice)
+                
+                for invoice in return_invoices:
+                    commission_invoice.append("items", {
+                        "item_code": item,
+                        "description": item + "\n" + invoice.get("invoice_id", ""),
+                        "qty": -1,
+                        "rate": abs(invoice.get("total")),
+                        "invoice_form": invoice.get("invoice_id"),
+                        "income_account": frappe.db.get_value("Item", item, "item_defaults.income_account")
+                    })
+                
+                default_tax_template = get_tax_template(settings)
+                commission_invoice.update({
+                    "taxes_and_charges": default_tax_template
+                })
+                commission_invoice.save()
+                
+                for mop in pos_profile.get("payments", []):
+                    if mop.default:
+                        default_mop = mop.mode_of_payment
+
+                commission_invoice.append("payments", {
+                    "mode_of_payment": default_mop,
+                    "amount": commission_invoice.grand_total
+                })
+                commission_invoice.save()
+
+                # Update invoice form records
+                for invoice in return_invoices:
+                    invoice_form_doc = frappe.get_doc("Invoice Form", invoice.get("invoice_id"))
+                    if party_type == "Supplier":
+                        frappe.db.set_value("Invoice Form", invoice_form_doc.name, "has_supplier_commission_invoice", 1)
+                    else:
+                        for line in invoice_form_doc.items:
+                            if line.get("customer") == customer:
+                                frappe.db.set_value("Invoice Form Item", line.name, "has_commission_invoice", 1)
+                                
+            except Exception as e:
+                frappe.log_error(title="Creation Commission Invoice Failed (Return)", message=frappe.get_traceback())
+                for invoice in return_invoices:
+                    failed_invoices.append({
+                        "invoice_id": invoice.get("invoice_id"),
+                        "total": invoice.get("total")
+                    })
 
     return failed_invoices
-
 
 def get_tax_template(settings):
     default_tax_template = settings.get("default_tax")
