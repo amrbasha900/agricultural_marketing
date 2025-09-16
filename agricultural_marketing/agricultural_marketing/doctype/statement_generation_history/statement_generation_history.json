@@ -1,212 +1,219 @@
 {
-    "actions": [],
-    "autoname": "format:SGH-{####}",
-    "creation": "2025-08-09 20:15:25.256661",
-    "doctype": "DocType",
-    "engine": "InnoDB",
-    "field_order": [
-     "basic_info_section",
-     "company",
-     "party_type",
-     "party_group", 
-     "party",
-     "column_break_1",
-     "from_date",
-     "to_date",
-     "created_by_user",
-     "generation_time",
-     "filters_section",
-     "consider_draft",
-     "consider_draft_payments",
-     "neglect_items",
-     "calculate_opening_balance_with_totals",
-     "column_break_2",
-     "total_parties",
-     "completed_count",
-     "failed_count",
-     "whatsapp_sent_count",
-     "summary_section",
-     "description",
-     "pdf_logs_section",
-     "pdf_generator_logs"
-    ],
-    "fields": [
-     {
-      "fieldname": "basic_info_section",
-      "fieldtype": "Section Break",
-      "label": "Basic Information"
-     },
-     {
-      "fieldname": "company",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Company",
-      "options": "Company",
-      "reqd": 1
-     },
-     {
-      "fieldname": "party_type",
-      "fieldtype": "Link", 
-      "in_list_view": 1,
-      "label": "Party Type",
-      "options": "Party Type",
-      "reqd": 1
-     },
-     {
-      "fieldname": "party_group",
-      "fieldtype": "Data",
-      "label": "Party Group"
-     },
-     {
-      "fieldname": "party",
-      "fieldtype": "Data",
-      "label": "Specific Party"
-     },
-     {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-     },
-     {
-      "fieldname": "from_date",
-      "fieldtype": "Date",
-      "in_list_view": 1,
-      "label": "From Date",
-      "reqd": 1
-     },
-     {
-      "fieldname": "to_date",
-      "fieldtype": "Date",
-      "in_list_view": 1,
-      "label": "To Date"
-     },
-     {
-      "default": "user",
-      "fieldname": "created_by_user",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Created By",
-      "options": "User",
-      "reqd": 1
-     },
-     {
-      "default": "now",
-      "fieldname": "generation_time",
-      "fieldtype": "Datetime",
-      "in_list_view": 1,
-      "label": "Generation Time"
-     },
-     {
-      "fieldname": "filters_section",
-      "fieldtype": "Section Break",
-      "label": "Generation Filters"
-     },
-     {
-      "default": "0",
-      "fieldname": "consider_draft",
-      "fieldtype": "Check",
-      "label": "Consider Drafts"
-     },
-     {
-      "default": "0",
-      "fieldname": "consider_draft_payments",
-      "fieldtype": "Check",
-      "label": "Consider Draft Payments"
-     },
-     {
-      "default": "0",
-      "fieldname": "neglect_items",
-      "fieldtype": "Check",
-      "label": "Neglect Items"
-     },
-     {
-      "default": "0",
-      "fieldname": "calculate_opening_balance_with_totals",
-      "fieldtype": "Check",
-      "label": "Calculate Opening Balance with Totals"
-     },
-     {
-      "fieldname": "column_break_2",
-      "fieldtype": "Column Break"
-     },
-     {
-      "default": "0",
-      "fieldname": "total_parties",
-      "fieldtype": "Int",
-      "label": "Total Parties",
-      "read_only": 1
-     },
-     {
-      "default": "0",
-      "fieldname": "completed_count",
-      "fieldtype": "Int",
-      "label": "Completed Count",
-      "read_only": 1
-     },
-     {
-      "default": "0",
-      "fieldname": "failed_count",
-      "fieldtype": "Int",
-      "label": "Failed Count",
-      "read_only": 1
-     },
-     {
-      "default": "0",
-      "fieldname": "whatsapp_sent_count",
-      "fieldtype": "Int",
-      "label": "WhatsApp Sent Count",
-      "read_only": 1
-     },
-     {
-      "fieldname": "summary_section",
-      "fieldtype": "Section Break",
-      "label": "Summary"
-     },
-     {
-      "fieldname": "description",
-      "fieldtype": "Text",
-      "label": "Description"
-     },
-     {
-      "fieldname": "pdf_logs_section",
-      "fieldtype": "Section Break",
-      "label": "PDF Generation Logs"
-     },
-     {
-      "fieldname": "pdf_generator_logs",
-      "fieldtype": "Table",
-      "label": "PDF Generator Logs",
-      "options": "Statement Generation History Item"
-     }
-    ],
-    "index_web_pages_for_search": 1,
-    "links": [],
-    "modified": "2025-08-09 22:04:05.591824",
-    "modified_by": "Administrator",
-    "module": "Agricultural Marketing",
-    "name": "Statement Generation History",
-    "naming_rule": "Expression",
-    "owner": "Administrator",
-    "permissions": [
-     {
-      "create": 1,
-      "delete": 1,
-      "email": 1,
-      "export": 1,
-      "print": 1,
-      "read": 1,
-      "report": 1,
-      "role": "System Manager",
-      "share": 1,
-      "write": 1
-     },
-     {
-      "read": 1,
-      "role": "All"
-     }
-    ],
-    "row_format": "Dynamic",
-    "sort_field": "modified",
-    "sort_order": "DESC",
-    "states": [],
-    "track_changes": 1
-   }
+ "actions": [],
+ "autoname": "format:SGH-{####}",
+ "creation": "2025-08-09 20:15:25.256661",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "basic_info_section",
+  "company",
+  "party_type",
+  "party_group",
+  "party",
+  "column_break_1",
+  "from_date",
+  "to_date",
+  "created_by_user",
+  "generation_time",
+  "filters_section",
+  "consider_draft",
+  "consider_draft_payments",
+  "neglect_items",
+  "calculate_opening_balance_with_totals",
+  "supplier_statement",
+  "column_break_2",
+  "total_parties",
+  "completed_count",
+  "failed_count",
+  "whatsapp_sent_count",
+  "summary_section",
+  "description",
+  "pdf_logs_section",
+  "pdf_generator_logs"
+ ],
+ "fields": [
+  {
+   "fieldname": "basic_info_section",
+   "fieldtype": "Section Break",
+   "label": "Basic Information"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "party_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Party Type",
+   "options": "Party Type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "party_group",
+   "fieldtype": "Data",
+   "label": "Party Group"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Data",
+   "label": "Specific Party"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "From Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "To Date"
+  },
+  {
+   "default": "user",
+   "fieldname": "created_by_user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Created By",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "now",
+   "fieldname": "generation_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Generation Time"
+  },
+  {
+   "fieldname": "filters_section",
+   "fieldtype": "Section Break",
+   "label": "Generation Filters"
+  },
+  {
+   "default": "0",
+   "fieldname": "consider_draft",
+   "fieldtype": "Check",
+   "label": "Consider Drafts"
+  },
+  {
+   "default": "0",
+   "fieldname": "consider_draft_payments",
+   "fieldtype": "Check",
+   "label": "Consider Draft Payments"
+  },
+  {
+   "default": "0",
+   "fieldname": "neglect_items",
+   "fieldtype": "Check",
+   "label": "Neglect Items"
+  },
+  {
+   "default": "0",
+   "fieldname": "calculate_opening_balance_with_totals",
+   "fieldtype": "Check",
+   "label": "Calculate Opening Balance with Totals"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_parties",
+   "fieldtype": "Int",
+   "label": "Total Parties",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "completed_count",
+   "fieldtype": "Int",
+   "label": "Completed Count",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "failed_count",
+   "fieldtype": "Int",
+   "label": "Failed Count",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "whatsapp_sent_count",
+   "fieldtype": "Int",
+   "label": "WhatsApp Sent Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "pdf_logs_section",
+   "fieldtype": "Section Break",
+   "label": "PDF Generation Logs"
+  },
+  {
+   "fieldname": "pdf_generator_logs",
+   "fieldtype": "Table",
+   "label": "PDF Generator Logs",
+   "options": "Statement Generation History Item"
+  },
+  {
+   "default": "0",
+   "fieldname": "supplier_statement",
+   "fieldtype": "Check",
+   "label": "Supplier Statement"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-08-27 13:26:32.019086",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "Statement Generation History",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

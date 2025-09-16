@@ -4,6 +4,8 @@
 {% else %}
 {% set is_supplier = false %}
 {% endif %}
+{% set number_format = frappe.db.get_single_value("System Settings", "number_format") or "#,###.##" %}
+
 <html dir="{{ layout_direction }}" lang="{{ lang }}">
 <style>
     body {
@@ -107,8 +109,8 @@
         <th style="width: 13%"> {{ _("Date") }}</th>
         <th style="width: 8%"> {{ _("Debit") }}</th>
         <th style="width: 8%"> {{ _("Credit") }}</th>
-        <th style="width: 8%%"> {{ _("Price") }}</th>
-        <th style="width: 8%%"> {{ _("Quantity") }}</th>
+        <th style="width: 8%"> {{ _("Price") }}</th>
+        <th style="width: 8%"> {{ _("Quantity") }}</th>
         <th style="width: 20%"> {{ _("Statement") }}</th>
     </tr>
     </thead>
@@ -118,14 +120,16 @@
     <tr>
         <td> {{ item.reference_id }}</td>
         <td> {% if item.date %} {{ item.date }} {% endif %}</td>
-        <td> {% if item.debit %} {{ item.debit }} {% endif %}</td>
-        <td> {% if item.credit %} {{ item.credit }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.debit %} {{ frappe.format_value(item.debit, {"fieldtype": "Currency"}) }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.credit %} {{ frappe.format_value(item.credit, {"fieldtype": "Currency"}) }} {% endif %}</td>
         {% if item.doctype == "Invoice Form" %}
-        <td> {{ item.price }}</td>
+        <td style="direction: ltr;"> {{ frappe.format_value(item.price, {"fieldtype": "Currency"}) }}</td>
         <td> {{ item.qty }}</td>
         <td> {{ item.statement }}</td>
         {% else %}
-        <td colspan="3"> {{ item.statement }}</td>
+        <td colspan="3" style="direction: ltr;"> 
+            {{ frappe.format_value(item.statement, {"fieldtype": "Currency"}) }}
+        </td>
         {% endif %}
     </tr>
     {% endfor %}

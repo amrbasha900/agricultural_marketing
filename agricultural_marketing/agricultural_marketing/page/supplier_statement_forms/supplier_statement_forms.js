@@ -904,7 +904,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
 
     function browseHistory() {
         frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_statement_generation_history',
+            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.get_statement_generation_history',
             args: { party_type: 'Supplier' }, // Filter for supplier only
             callback: function (r) {
                 if (r.message) {
@@ -945,7 +945,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
             primary_action(values) {
                 values.party_type = 'Supplier'; // Force supplier filter
                 frappe.call({
-                    method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_statement_generation_history',
+                    method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.get_statement_generation_history',
                     args: values,
                     callback: function (r) {
                         if (r.message) {
@@ -988,7 +988,6 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                                 <th>${__('Completed')}</th>
                                 <th>${__('Failed')}</th>
                                 <th>${__('WhatsApp Sent')}</th>
-                                <th>${__('Created')}</th>
                                 <th>${__('Created By')}</th>
                                 <th>${__('Actions')}</th>
                             </tr>
@@ -1009,7 +1008,6 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                     <td><span class="badge badge-success">${history.completed_count}</span></td>
                     <td><span class="badge badge-danger">${history.failed_count}</span></td>
                     <td><span class="badge badge-info">${history.whatsapp_sent_count}</span></td>
-                    <td><span class="badge badge-primary">${history.whatsapp_created_count}</span></td>
                     <td><small>${history.created_by_user}</small></td>
                     <td>
                         <button class="btn btn-sm btn-primary view-history" data-history-id="${history.name}">${__('View')}</button>

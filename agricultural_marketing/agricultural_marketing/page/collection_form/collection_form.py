@@ -294,9 +294,9 @@ def get_party_summary(filters, party_type, data):
                 "reference_id": _("Total"),
                 "qty": "",
                 "price": "",
-                "statement": f"<b> {flt(total_debit - total_credit, 2) or '0'} </b>",
-                "debit": f"<b> {flt(total_debit, 2) or '0'} </b>",  # Display credit in debit column 
-                "credit": f"<b> {flt(total_credit, 2) or '0'} </b>"   # Display debit in credit column
+                "statement": f"{flt(total_debit - total_credit, 2) or '0'}",
+                "debit": f"{flt(total_debit, 2) or '0'}",  # Display credit in debit column 
+                "credit": f"{flt(total_credit, 2) or '0'}"   # Display debit in credit column
             })
         else:
             # For supplier: regular display
@@ -305,9 +305,9 @@ def get_party_summary(filters, party_type, data):
                 "reference_id": _("Total"),
                 "qty": "",
                 "price": "",
-                "statement": f"<b> {flt(total_debit - total_credit, 2) or '0'} </b>",
-                "debit": f"<b> {flt(total_debit, 2) or '0'} </b>",
-                "credit": f"<b> {flt(total_credit, 2) or '0'} </b>"
+                "statement": f"{flt(total_debit - total_credit, 2) or '0'}",
+                "debit": f"{flt(total_debit, 2) or '0'}",
+                "credit": f"{flt(total_credit, 2) or '0'}"
             })
         
         if filters.get("ignore_zero_transactions") and (total_debit - total_credit) == 0:

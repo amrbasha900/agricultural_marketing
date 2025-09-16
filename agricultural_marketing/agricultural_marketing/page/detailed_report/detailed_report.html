@@ -108,11 +108,11 @@
     <tr>
         <td> {% if sum.reference %} {{ sum.reference }} {% endif %}</td>
         <td> {% if sum.date %} {{ sum.date }} {% endif %}</td>
-        <td> {% if sum.debit %} {{ sum.debit }} {% endif %}</td>
-        <td> {% if sum.credit %} {{ sum.credit }} {% endif %}</td>
-        <td> {% if sum.balance_from %} {{ sum.balance_from }} {% endif %}</td>
-        <td> {% if sum.balance_to %} {{ sum.balance_to }} {% endif %}</td>
-        <td> {% if sum.statement == "Opening Balance" %} الرصيد الافتتاحى {% elif sum.statement  == "Total" %} الاجمالي {% elif sum.statement %}{{ sum.statement }}{% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.debit %} {{ frappe.format_value(sum.debit , {"fieldtype": "Currency"}) }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.credit %}  {{ frappe.format_value(sum.credit , {"fieldtype": "Currency"}) }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.balance_from %} {{ frappe.format_value(sum.balance_from , {"fieldtype": "Currency"}) }}   {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.balance_to %}{{ frappe.format_value(sum.balance_to , {"fieldtype": "Currency"}) }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.statement == "Opening Balance" %} الرصيد الافتتاحى {% elif sum.statement  == "Total" %} الاجمالي {% elif sum.statement %}{{ sum.statement }}{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

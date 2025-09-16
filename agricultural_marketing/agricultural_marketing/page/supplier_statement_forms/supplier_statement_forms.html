@@ -104,9 +104,9 @@
             {% elif sum.statement == "Duration Payments" %}المدفوعات خلال الفترة 
             {% elif sum.statement %}{{sum.statement}}
             {% endif %}</td>
-        <td> {% if sum.debit %} {{ sum.debit }} {% endif %}</td>
-        <td> {% if sum.credit %} {{ sum.credit }} {% endif %}</td>
-        <td> {% if sum.balance %} {{ sum.balance }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.debit %} {{ frappe.format_value(sum.debit, {"fieldtype": "Currency"}) }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.credit %} {{ frappe.format_value(sum.credit, {"fieldtype": "Currency"}) }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.balance %} {{ frappe.format_value(sum.balance, {"fieldtype": "Currency"}) }} {% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -140,9 +140,9 @@
         {% if not filters.neglect_items %}
         <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
         <td> {% if item.qty %} {{ item.qty }} {% endif %}</td>
-        <td> {% if item.price %} {{ item.price }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.price %} {{ frappe.format_value(item.price, {"fieldtype": "Currency"}) }} {% endif %}</td>
         {% endif %}
-        <td> {% if item.total %} {{ item.total }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.total %} {{ frappe.format_value(item.total, {"fieldtype": "Currency"}) }} {% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -176,9 +176,9 @@
         {% if not filters.neglect_items %}
         <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
         <td> {% if item.qty %} {{ item.qty }} {% endif %}</td>
-        <td> {% if item.price %} {{ item.price }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.price %} {{ frappe.format_value(item.price, {"fieldtype": "Currency"}) }} {% endif %}</td>
         {% endif %}
-        <td> {% if item.total %} {{ item.total }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.total %} {{ frappe.format_value(item.total, {"fieldtype": "Currency"}) }} {% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -210,7 +210,7 @@
         <td> {% if payment.mop == "Receive" %}تسلم{% elif payment.mop == "Pay" %}دفع  {% elif payment.mop %}{{ _(payment.mop) }} {% endif %}</td>
         <td> {% if payment.payment_type %} {{ _(payment.payment_type) }} {% endif %}</td>
         <td> {% if payment.remarks %} {{ payment.remarks }} {% endif %}</td>
-        <td> {{ payment.paid_amount }}</td>
+        <td style="direction: ltr;"> {{ frappe.format_value(payment.paid_amount, {"fieldtype": "Currency"}) }}</td>
     </tr>
     {% endfor %}
     </tbody>

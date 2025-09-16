@@ -52,6 +52,7 @@ def queue_pdf_generation(filters):
         "to_date": filters.get("to_date"),
         "created_by_user": frappe.session.user,
         "generation_time": now(),
+        "supplier_statement": 1,
         "consider_draft": filters.get("consider_draft", 0),
         "consider_draft_payments": filters.get("consider_draft_payments", 0),
         "neglect_items": filters.get("neglect_items", 0),
@@ -1209,3 +1210,47 @@ def update_history_summary_counts_safe(history_id):
                 continue
             frappe.log_error(message=f"Failed to update history summary counts after {retry_count} retries: {str(e)}", title="Statement Generation History")
             break
+
+@frappe.whitelist()
+def get_statement_generation_history(from_date=None, to_date=None, party_name=None, company=None):
+    """Get Statement Generation History records with filters"""
+    conditions = {}
+    
+    if from_date and to_date:
+        conditions["from_date"] = ["between", [from_date, to_date]]
+    elif from_date:
+        conditions["from_date"] = [">=", from_date]
+    elif to_date:
+        conditions["to_date"] = ["<=", to_date]
+    
+    if party_name:
+        # Search in child table for party name
+        history_names = frappe.db.sql("""
+            SELECT DISTINCT parent 
+            FROM `tabStatement Generation History Item` 
+            WHERE party_name LIKE %s
+        """, f"%{party_name}%", as_dict=True)
+        
+        if history_names:
+            history_ids = [h.parent for h in history_names]
+            conditions["name"] = ["in", history_ids]
+        else:
+            return []  # No matching party names found
+    
+    if company:
+        conditions["company"] = company
+    conditions["supplier_statement"] = 1
+    histories = frappe.get_all(
+        "Statement Generation History",
+        filters=conditions,
+        fields=[
+            "name", "company", "party_type", "party_group", "party", 
+            "from_date", "to_date", "created_by_user", "generation_time",
+            "total_parties", "completed_count", "failed_count", "whatsapp_sent_count",
+            "description"
+        ],
+        order_by="generation_time desc",
+        limit=100
+    )
+    
+    return histories

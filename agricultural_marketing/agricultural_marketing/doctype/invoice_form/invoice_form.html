@@ -178,9 +178,9 @@
         <tbody>
         {% for item in items %}
         <tr>
-            <td>{{ item.total }}</td>
+            <td>{{ frappe.format_value(item.total, {"fieldtype": "Currency"}) }}</td>
             <td>{{ item.qty }}</td>
-            <td>{{ item.price }}</td>
+            <td>{{ frappe.format_value(item.price, {"fieldtype": "Currency"}) }}</td>
             <td>{{ item.item_name }}</td>
             <td></td>
         </tr>
@@ -188,20 +188,20 @@
 
         {% if is_supplier %}
         <tr>
-            <td>{{ invoice_basic_info.grand_total }}</td>
+            <td>{{ frappe.format_value(invoice_basic_info.grand_total, {"fieldtype": "Currency"}) }}</td>
             <td colspan="4">{% if is_rtl %} اجمالي المبلغ {% else %} Total {% endif %}</td>
         </tr>
         <tr>
-            <td>{{ invoice_basic_info.total_commission }}</td>
+            <td>{{ frappe.format_value(invoice_basic_info.total_commission, {"fieldtype": "Currency"}) }}</td>
             <td colspan="4">{% if is_rtl %} السعي {% else %} Commission {% endif %}</td>
         </tr>
         <tr>
-            <td>{{ invoice_basic_info.total_taxes }}</td>
+            <td>{{ frappe.format_value(invoice_basic_info.total_taxes, {"fieldtype": "Currency"}) }}</td>
             <td colspan="4">{% if is_rtl %} ضريبة السعي {% else %} Commission Tax {% endif %}</td>
         </tr>
         {% endif %}
         <tr>
-            <td>{{ invoice_basic_info.net_total }}</td>
+            <td>{{ frappe.format_value(invoice_basic_info.net_total, {"fieldtype": "Currency"}) }}</td>
             <td colspan="4" style="text-align: center;"> {{ invoice_basic_info.net_total_in_words }}
             </td>
         </tr>

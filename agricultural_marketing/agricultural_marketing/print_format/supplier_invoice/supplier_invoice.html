@@ -207,9 +207,9 @@
                         {% for item in doc.items %}
                         <tr>
                             <td>{{item.item_name}}</td>
-                            <td>{{item.price|round(2)}}</td>
+                            <td>{{ frappe.format_value(item.price|round(2), {"fieldtype": "Currency"}) }}</td>
                             <td>{{ item.qty|round(2) }}</td>
-                            <td>{{ item.total|round(2) }}</td>
+                            <td>{{ frappe.format_value(item.total|round(2), {"fieldtype": "Currency"}) }}</td>
                             <td>{{ item.customer }}</td>
                             <td></td>
                             {% set ns.commission = ns.commission + item.commission %}
@@ -252,7 +252,7 @@
             <div class="col-xs-6">
                 <div class="summary-line total-line">
                     <span>المجموع الكلي</span> :
-                    <span>{{(doc.grand_total)|round(2)}}</span>
+                    <span>{{ frappe.format_value(doc.grand_total|round(2), {"fieldtype": "Currency"}) }}</span>
                     <!-- <span>{{(doc.grand_total - doc.total_commissions_and_taxes)|round(2)}}</span> -->
                 </div>
             </div>

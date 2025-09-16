@@ -110,13 +110,13 @@
     {% for item in party_data %}
     <tr>
         <td> {{ item.reference_id }}</td>
-        <td> {% if item.date %} {{ item.date }} {% endif %}</td>
-        <td> {% if item.debit %} {{ item.debit }} {% endif %}</td>
-        <td> {% if item.credit %} {{ item.credit }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.date %} {{ item.date }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.debit %} {{ frappe.format_value(item.debit, {"fieldtype": "Currency"}) }} {% endif %}</td>
+        <td style="direction: ltr;"> {% if item.credit %} {{ frappe.format_value(item.credit, {"fieldtype": "Currency"}) }} {% endif %}</td>
         {% if item.doctype == "Invoice Form" %}
         <td colspan="3"> {{ item.price }} * {{ item.qty }} {{ item.statement }}</td>
         {% else %}
-        <td colspan="3"> {{ item.statement }}</td>
+        <td colspan="3" style="direction: ltr;"> {{ frappe.format_value(item.statement, {"fieldtype": "Currency"}) }} </td>
         {% endif %}
     </tr>
     {% endfor %}
