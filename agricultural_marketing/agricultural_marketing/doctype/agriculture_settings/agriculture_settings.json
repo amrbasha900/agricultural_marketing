@@ -40,6 +40,7 @@
   "column_break_btoi",
   "delay_between_batches_seconds",
   "delay_between_messages_seconds",
+  "whatsapp_session",
   "enable_auto_cleanup",
   "cleanup_after_days",
   "show_customer_credit_details"
@@ -255,6 +256,12 @@
    "fieldname": "delay_between_messages_seconds",
    "fieldtype": "Int",
    "label": "Delay Between Messages (seconds)"
+  },
+  {
+   "fieldname": "whatsapp_session",
+   "fieldtype": "Link",
+   "label": "Default WhatsApp Session",
+   "options": "WhatsApp Session"
   },
   {
    "default": "1",

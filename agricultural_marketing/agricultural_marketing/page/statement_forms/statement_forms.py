@@ -557,7 +557,7 @@ def send_whatsapp_msg(filters):
 @frappe.whitelist()
 def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, reference_document=None, document_name=None):
     """
-    Inserts a new record into the WhatsApp Messages Doctype with an attached PDF report and WhatsApp number.
+    Send WhatsApp via whatsapp_connector (no WhatsApp Messages DocType). Returns WhatsApp Message Log name.
     """
 
     if not (party_type and party_name and pdf_url):
@@ -571,27 +571,44 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
         if not whatsapp_number:
             return {"error": f"WhatsApp number not found for {party_name}"}
 
-        # Create a new WhatsApp Messages entry
-        whatsapp_messages = frappe.get_doc({
-            "doctype": "WhatsApp Messages",
-            "party_type": party_type,
-            "party_name": party_name,
-            "phone_number": whatsapp_number,
-            "has_media": 1,
-            "message": whatsapp_message or "pls",
-            "status": "Queued",
-            "attach": pdf_url,
-            "auto_send":1,
-            "reference_document": reference_document,
-            "document_name": document_name
-        })
-        whatsapp_messages.insert(ignore_permissions=True)
+        # Choose session: prefer Agriculture Settings.whatsapp_session, else any connected, else any
+        default_session = frappe.db.get_single_value("Agriculture Settings", "whatsapp_session")
+        session_name = default_session or frappe.db.get_value(
+            "WhatsApp Session",
+            {"status_text": ["in", ["CONNECTED", "Connected", "READY", "Ready"]]},
+            "name",
+        ) or frappe.db.get_value("WhatsApp Session", {}, "name")
+
+        if not session_name:
+            return {"error": "No WhatsApp Session configured"}
+
+        # Use connector service to send message (Document with attachment_url)
+        from whatsapp_connector.whatsapp_connector.services.session_service import send_message as _wa_send
+
+        log_name = _wa_send(
+            session_name=session_name,
+            recipient=whatsapp_number,
+            message_type="Document",
+            message=whatsapp_message or "Please find your statement attached.",
+            attachment_url=pdf_url,
+            party_type=party_type,
+            party_name=party_name,
+            reference_document=reference_document,
+            document_name=document_name,
+        )
+
+        status = None
+        try:
+            log_doc = frappe.get_doc("WhatsApp Message Log", log_name)
+            status = log_doc.status
+        except Exception:
+            status = None
+
         frappe.db.commit()
-        time.sleep(3)
-        return whatsapp_messages.name or None
+        return {"log_name": log_name, "status": status}
 
     except Exception as e:
-        frappe.log_error(message=f"Error in send_whatsapp_msg: {str(e)}", title="WhatsApp Messaging")
+        frappe.log_error(message=f"Error sending WhatsApp via connector: {str(e)}", title="WhatsApp Messaging")
         return {"error": str(e)}
 
 @frappe.whitelist()
@@ -1098,7 +1115,7 @@ def get_pdf_generation_status(filters=None, history_id=None):
     # Get WhatsApp status and party display name for each log
     for log in logs:
         if log.whatsapp_message_id:
-            whatsapp_status = frappe.db.get_value("WhatsApp Messages", log.whatsapp_message_id, "status")
+            whatsapp_status = frappe.db.get_value("WhatsApp Message Log", log.whatsapp_message_id, "status")
             log["whatsapp_status"] = whatsapp_status or "Unknown"
         else:
             log["whatsapp_status"] = "Not Created"
@@ -1376,8 +1393,7 @@ def send_whatsapp_for_party(log_id):
         if log_doc.status != "Completed" or not log_doc.pdf_file:
             return {"error": "PDF not ready for this party"}
         
-        if log_doc.whatsapp_sent:
-            return {"error": "WhatsApp already sent for this party"}
+        # Allow re-send even if previously sent
         
         # Send WhatsApp message
         whatsapp_result = create_whatsapp_messages(
@@ -1390,7 +1406,7 @@ def send_whatsapp_for_party(log_id):
         
         if whatsapp_result and not whatsapp_result.get("error"):
             log_doc.whatsapp_sent = 1
-            log_doc.whatsapp_message_id = whatsapp_result
+            log_doc.whatsapp_message_id = whatsapp_result.get("log_name") or whatsapp_result
             log_doc.save(ignore_permissions=True)
             
             # Update history if linked
@@ -1399,8 +1415,8 @@ def send_whatsapp_for_party(log_id):
                     log_doc.statement_generation_history, 
                     log_id, 
                     log_doc.status,
-                    whatsapp_status="Queued",
-                    whatsapp_message_id=whatsapp_result
+                    whatsapp_status=whatsapp_result.get("status") or "Queued",
+                    whatsapp_message_id=(whatsapp_result.get("log_name") or whatsapp_result)
                 )
                 update_history_summary_counts(log_doc.statement_generation_history)
             
@@ -1436,7 +1452,7 @@ def send_bulk_whatsapp(log_ids):
 
 @frappe.whitelist()
 def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, reference_document=None, document_name=None):
-    """UPDATED - Create WhatsApp message entry with better error handling"""
+    """Send WhatsApp via whatsapp_connector (unified version)."""
     if not (party_type and party_name and pdf_url):
         return {"error": "Missing required parameters."}
 
@@ -1447,26 +1463,42 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
         if not whatsapp_number:
             return {"error": f"WhatsApp number not found for {party_name}"}
 
-        whatsapp_messages = frappe.get_doc({
-            "doctype": "WhatsApp Messages",
-            "party_type": party_type,
-            "party_name": party_name,
-            "phone_number": whatsapp_number,
-            "has_media": 1,
-            "message": whatsapp_message or "Please find your statement attached.",
-            "status": "Queued",
-            "attach": pdf_url,
-            "auto_send": 1,
-            "reference_document": reference_document,
-            "document_name": document_name
-        })
-        whatsapp_messages.insert(ignore_permissions=True)
+        default_session = frappe.db.get_single_value("Agriculture Settings", "whatsapp_session")
+        session_name = default_session or frappe.db.get_value(
+            "WhatsApp Session",
+            {"status_text": ["in", ["CONNECTED", "Connected", "READY", "Ready"]]},
+            "name",
+        ) or frappe.db.get_value("WhatsApp Session", {}, "name")
+
+        if not session_name:
+            return {"error": "No WhatsApp Session configured"}
+
+        from whatsapp_connector.whatsapp_connector.services.session_service import send_message as _wa_send
+
+        log_name = _wa_send(
+            session_name=session_name,
+            recipient=whatsapp_number,
+            message_type="Document",
+            message=whatsapp_message or "Please find your statement attached.",
+            attachment_url=pdf_url,
+            party_type=party_type,
+            party_name=party_name,
+            reference_document=reference_document,
+            document_name=document_name,
+        )
+
+        status = None
+        try:
+            log_doc = frappe.get_doc("WhatsApp Message Log", log_name)
+            status = log_doc.status
+        except Exception:
+            status = None
+
         frappe.db.commit()
-        time.sleep(3)
-        return whatsapp_messages.name
+        return {"log_name": log_name, "status": status}
 
     except Exception as e:
-        frappe.log_error(message=f"Error in create_whatsapp_messages: {str(e)}", title="WhatsApp Messaging")
+        frappe.log_error(message=f"Error sending WhatsApp via connector: {str(e)}", title="WhatsApp Messaging")
         return {"error": str(e)}
 
 # ================================
@@ -1823,7 +1855,7 @@ def get_history_details(history_id):
         # Get updated WhatsApp statuses
         for item in history_doc.pdf_generator_logs:
             if item.whatsapp_message_id:
-                current_status = frappe.db.get_value("WhatsApp Messages", item.whatsapp_message_id, "status")
+                current_status = frappe.db.get_value("WhatsApp Message Log", item.whatsapp_message_id, "status")
                 if current_status and current_status != item.whatsapp_status:
                     item.whatsapp_status = current_status
         
@@ -1951,6 +1983,39 @@ def _send_whatsapp_job(log_id):
 
 
 @frappe.whitelist()
+def process_whatsapp_bulk(log_ids, delay_seconds: int = 4):
+    """Background worker: send WhatsApp for a list sequentially with delay between messages."""
+    import json as _json
+    try:
+        if isinstance(log_ids, str):
+            try:
+                log_ids = _json.loads(log_ids)
+            except Exception:
+                log_ids = []
+        if not isinstance(log_ids, list):
+            log_ids = []
+        try:
+            delay_seconds = int(delay_seconds)
+        except Exception:
+            delay_seconds = 4
+        if delay_seconds < 4:
+            delay_seconds = 4
+        count = 0
+        for lid in log_ids:
+            try:
+                send_whatsapp_for_party(lid)
+            except Exception as e:
+                frappe.log_error(message=f"Bulk WhatsApp failed for {lid}: {str(e)}", title="WhatsApp Bulk Sender")
+            count += 1
+            if count < len(log_ids):
+                time.sleep(delay_seconds)
+        return {"success": True, "processed": len(log_ids), "delay": delay_seconds}
+    except Exception as e:
+        frappe.log_error(message=f"process_whatsapp_bulk error: {str(e)}", title="WhatsApp Bulk Sender")
+        return {"error": str(e)}
+
+
+@frappe.whitelist()
 def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
     """Queue WhatsApp messages for all eligible parties in a history or a provided list of log IDs.
     If retry_failed is truthy, also include items whose whatsapp_status is 'Failed'."""
@@ -1990,19 +2055,27 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
             elif isinstance(log_ids, list):
                 ids = log_ids
         
-        for lid in ids:
-            try:
-                result = queue_whatsapp_for_party(lid)
-                if result.get("success"):
-                    queued += 1
-                else:
-                    skipped += 1
-            except Exception:
-                skipped += 1
-        
+        # Process in one background job with delay between messages (>=4s)
+        delay_cfg = frappe.db.get_single_value("Agriculture Settings", "delay_between_messages_seconds") or 4
+        try:
+            delay_seconds = int(delay_cfg)
+        except Exception:
+            delay_seconds = 4
+        if delay_seconds < 4:
+            delay_seconds = 4
+
+        job_label = history_id or ("bulk-" + str(len(ids)))
+        frappe.enqueue(
+            method=process_whatsapp_bulk,
+            log_ids=ids,
+            delay_seconds=delay_seconds,
+            job_name=f"WA-Bulk-{job_label}",
+            timeout=3600,
+            is_async=True,
+        )
         return {
-            "success": f"Queued {queued} WhatsApp messages",
-            "queued": queued,
+            "success": f"Queued {len(ids)} WhatsApp messages (rate-limited every {delay_seconds}s)",
+            "queued": len(ids),
             "skipped": skipped,
         }
     except Exception as e:
