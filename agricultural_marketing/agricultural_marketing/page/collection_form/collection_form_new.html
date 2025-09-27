@@ -116,7 +116,13 @@
         {% if item.doctype == "Invoice Form" %}
         <td colspan="3"> {{ item.price }} * {{ item.qty }} {{ item.statement }}</td>
         {% else %}
-        <td colspan="3" style="direction: ltr;"> {{ frappe.format_value(item.statement, {"fieldtype": "Currency"}) }} </td>
+        <td colspan="3" style="direction: ltr;"> 
+            {% if item.doctype == "Payment Entry" %}
+            {{ item.statement }}
+            {% else %}
+            {{ frappe.format_value(item.statement, {"fieldtype": "Currency"}) }}
+            {% endif %}
+        </td>
         {% endif %}
     </tr>
     {% endfor %}
