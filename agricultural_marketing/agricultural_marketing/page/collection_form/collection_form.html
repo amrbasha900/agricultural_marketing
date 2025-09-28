@@ -128,8 +128,8 @@
         <td> {{ item.statement }}</td>
         {% else %}
         <td colspan="3" style="direction: ltr;"> 
-            {% if item.doctype == "Payment Entry" %}
-            {{ item.statement }}
+            {% if item.reference_id != "Total" %}
+            {{ item.statement }} 
             {% else %}
             {{ frappe.format_value(item.statement, {"fieldtype": "Currency"}) }}
             {% endif %}
