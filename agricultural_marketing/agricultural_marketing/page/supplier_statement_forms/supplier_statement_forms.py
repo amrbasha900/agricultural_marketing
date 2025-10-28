@@ -40,7 +40,7 @@ def queue_pdf_generation(filters):
         "message": f"Found {len(suppliers_with_data)} suppliers with data",
         "parties": suppliers_with_data[:5]
     })
-    
+  
     # Create Statement Generation History record
     history_doc = frappe.get_doc({
         "doctype": "Statement Generation History",
@@ -64,7 +64,7 @@ def queue_pdf_generation(filters):
     
     # Create PDF Generator Log entries for suppliers with data
     log_entries = []
-    
+    #suppliers_with_data.append('0010891')
     for supplier in suppliers_with_data:
         # Create new log entry
         log_entry = frappe.get_doc({
@@ -333,8 +333,7 @@ def get_buying_items_details(data, filters):
     buying_query = buying_query.where(invformitem.customer.isin(parties))
     
     # IMPORTANT: Invoice form supplier should NOT be the same as filter supplier
-    buying_query = buying_query.where(invform.supplier.notin(parties))
-    
+    buying_query = buying_query.where(invform.supplier != invformitem.customer)    
     # Apply same date and status filters
     buying_query = validate_and_apply_date_filters(filters, buying_query, invform)
     
@@ -590,7 +589,6 @@ def get_parties(filters, _filters):
         parties = frappe.db.get_all(filters.get("party_type"), _filters, pluck="name")
     else:
         parties = frappe.db.get_all(filters.get("party_type"), _filters, pluck="name")
-
     return parties
 
 def validate_and_apply_date_filters(filters, query, doctype):
