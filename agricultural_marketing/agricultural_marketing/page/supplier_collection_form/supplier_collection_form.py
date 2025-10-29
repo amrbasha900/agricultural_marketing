@@ -180,7 +180,19 @@ def get_payments_details(filters):
 def get_party_summary(filters, party_type, data):
     def append_summary(doctype, reference_id, date, qty, price, statement, debit, credit):
         nonlocal last_balance
-        
+
+        # For Invoice Form - swap columns for customer only (match collection_form logic)
+        if doctype == "Invoice Form" and party_type == "Customer":
+            final_debit = flt(credit, 2) or str(credit)
+            final_credit = flt(debit, 2) or str(debit)
+        # For payments and drafts, keep the mapping as passed in
+        elif doctype in ["Payment Entry", "Payments Receipts Reference"]:
+            final_debit = flt(debit, 2) or str(debit)
+            final_credit = flt(credit, 2) or str(credit)
+        else:
+            final_debit = flt(debit, 2) or str(debit)
+            final_credit = flt(credit, 2) or str(credit)
+
         final_data[party].append({
             "doctype": doctype,
             "reference_id": reference_id,
@@ -188,14 +200,14 @@ def get_party_summary(filters, party_type, data):
             "qty": cint(qty) if hide_decimal else qty,
             "price": price,
             "statement": statement,
-            "debit": flt(debit, 2) or str(debit),
-            "credit": flt(credit, 2) or str(credit)
+            "debit": final_debit,
+            "credit": final_credit
         })
 
     final_data = {}
     hide_decimal = True if filters.get("hide_decimal") else False
     from_date = filters.get('from_date')
-    
+
     for party, party_data in data.items():
         debit, credit, last_balance = 0, 0, 0
         total_debit, total_credit = 0, 0
@@ -205,18 +217,18 @@ def get_party_summary(filters, party_type, data):
             "from_date": from_date
         }
 
-        q = """ 
-                SELECT 
+        q = """
+                SELECT
                     name, debit, credit, posting_date
-                FROM 
+                FROM
                     `tabGL Entry`
-                WHERE 
-                    party_type=%(party_type)s 
-                AND 
-                    party=%(party)s 
-                AND 
+                WHERE
+                    party_type=%(party_type)s
+                AND
+                    party=%(party)s
+                AND
                     is_cancelled = 0
-                AND 
+                AND
                 (posting_date < %(from_date)s OR is_opening = 'Yes')
             """
 
@@ -256,63 +268,46 @@ def get_party_summary(filters, party_type, data):
             "debit": flt(debit, 2) or "0",
             "credit": flt(credit, 2) or "0"
         })
-        
+
         for d in party_data:
             if d.get("doctype") == "Invoice Form":
                 commission_with_taxes = 0
                 if filters.get("party_type") == "Supplier" and d.commission:
                     total_taxes = (d.commission * get_tax_rate()) / 100
                     commission_with_taxes = d.commission + total_taxes
-                
-                # For return invoices, use absolute values for display and calculations
-                display_total = abs(d.total) if d.get("is_return") else d.total
-                display_commission = abs(commission_with_taxes) if d.get("is_return") else commission_with_taxes
-                
-                # Check if this is a couple customer transaction or return invoice
-                is_couple_customer = bool(d.get("couple_customer") and d.get("couple_customer") != 0 and d.get("couple_customer") != '')
-                is_return = bool(d.get("is_return"))
-                
-                # Determine if we need to inverse the debit/credit logic
-                should_inverse = False
-                if filters.get("party_type") == "Supplier":
-                    # For supplier: 
-                    # - Normal invoice: inverse if couple customer (supplier buying)
-                    # - Return invoice: inverse the normal logic
-                    if is_return:
-                        # For return: inverse of normal logic
-                        should_inverse = not is_couple_customer  # If normal would be couple=True, return makes it False
-                    else:
-                        # For normal: inverse if couple customer
-                        should_inverse = is_couple_customer
-                elif filters.get("party_type") == "Customer":
-                    # For customer: inverse only if it's return (regardless of couple status)
-                    should_inverse = is_return
-                
-                if should_inverse:
-                    # Inverse: commission goes to credit, total goes to debit
-                    append_summary(d.doctype, d.reference_id, d.date, d.qty, d.price, d.item_name, 
-                                 display_total, display_commission)
-                    total_debit += display_total
-                    total_credit += display_commission
+
+                # Special handling: For supplier reports, treat only rows where the current
+                # party equals the customer AND the item is marked as coupled as pure DEBIT
+                # with no commission credit. Do not affect normal supplier invoices.
+                if (
+                    filters.get("party_type") == "Supplier"
+                    and d.get("customer") == party
+                    and bool(d.get("couple_customer"))
+                ):
+                    append_summary(d.doctype, d.reference_id, d.date, d.qty, d.price, d.item_name,
+                                   abs(flt(d.total, 2)), 0)
+                    total_debit += abs(flt(d.total, 2))
+                    continue
+
+                # Match collection_form logic: pass commission as debit and total as credit,
+                # and let append_summary handle swap for customers.
+                append_summary(d.doctype, d.reference_id, d.date, d.qty, d.price, d.item_name,
+                               commission_with_taxes, d.total)
+
+                # Update totals (match collection_form logic)
+                if party_type == "Customer":
+                    total_debit += d.total
+                    total_credit += commission_with_taxes
                 else:
-                    # Normal: commission goes to debit, total goes to credit
-                    if party_type == "Customer":
-                        # For customers, normal flow is total to debit, commission to credit
-                        append_summary(d.doctype, d.reference_id, d.date, d.qty, d.price, d.item_name, 
-                                     display_total, display_commission)
-                        total_debit += display_total
-                        total_credit += display_commission
-                    else:
-                        # For suppliers, normal flow is commission to debit, total to credit
-                        append_summary(d.doctype, d.reference_id, d.date, d.qty, d.price, d.item_name, 
-                                     display_commission, display_total)
-                        total_credit += display_total
-                        total_debit += display_commission
-                    
+                    total_credit += d.total
+                    total_debit += commission_with_taxes
+
             elif d.get("doctype") in ["Payment Entry", "Payments Receipts Reference"]:
                 statement = f"{_(d.mop)} - {d.remarks}" if d.remarks else f"{_(d.mop)}"
-                
-                # Payment logic remains unchanged
+
+                # Consistent approach for both customer and supplier:
+                # - "Receive" -> CREDIT
+                # - "Pay" -> DEBIT
                 if d.payment_type == "Receive":
                     append_summary(d.doctype, d.reference_id, d.date, "", "", statement, 0, abs(flt(d.paid_amount, 2)))
                     total_credit += abs(flt(d.paid_amount, 2))
@@ -324,7 +319,7 @@ def get_party_summary(filters, party_type, data):
         total_debit += debit
         total_credit += credit
 
-        # Append totals row
+        # Append totals row (keep existing bold formatting)
         final_data[party].append({
             "doctype": "",
             "reference_id": _("Total"),
@@ -334,7 +329,7 @@ def get_party_summary(filters, party_type, data):
             "debit": f"<b> {flt(total_debit, 2) or '0'} </b>",
             "credit": f"<b> {flt(total_credit, 2) or '0'} </b>"
         })
-        
+
         if filters.get("ignore_zero_transactions") and (total_debit - total_credit) == 0:
             del final_data[party]
 
