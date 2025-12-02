@@ -68,7 +68,6 @@ def get_data(data, filters):
     payments_details = get_payments_details(filters)
     process_result(invoices_details, payments_details, data)
     data = get_party_summary(filters=filters, party_type=filters.get("party_type"), data=data)
-    frappe.errprint(str(data))
     return data
 
 
@@ -146,7 +145,6 @@ def get_items_details(filters):
         for party in parties:
             if party not in parties_with_data:
                 result.append({"party": party})
-    frappe.errprint(str(result))
     return result
 
 def get_payments_details(filters):
@@ -240,15 +238,19 @@ def get_party_summary(filters, party_type, data):
 
         # GET total items and payments before from date
         if filters.get("consider_draft"):
-            total_items = get_draft_total_items(filters, party) or 0
+            draft_items = get_draft_total_items(filters, party) or {"debit": 0, "credit": 0}
             total_payments = get_draft_total_payments(filters, party) or 0
+            frappe.errprint("draft_items: " + str(draft_items))
+            frappe.errprint("total_payments: " + str(total_payments))
             if filters.get("party_type") == "Supplier":
                 total_draft_commission = get_draft_total_commission(filters, party) or 0
-                debit += total_payments + total_draft_commission
-                credit += total_items
+                frappe.errprint("total_draft_commission: " + str(total_draft_commission))
+                debit += total_payments + draft_items.get("debit", 0) + total_draft_commission
+                credit += draft_items.get("credit", 0)
             else:
-                debit += total_items
-                credit += total_payments
+                debit += draft_items.get("debit", 0)
+                credit += total_payments + draft_items.get("credit", 0)
+
 
         last_balance = debit - credit
         if abs(debit) > abs(credit):
@@ -452,39 +454,50 @@ def get_draft_total_items(filters, party):
 
     items_query = items_query.where(invform.docstatus == 0).where(invform.posting_date.lt(filters.get("from_date")))
 
-    result = items_query.select(Sum(invformitem.total).as_("total")).run(as_dict=True)
+    result = items_query.select(
+        invform.supplier.as_("supplier"),
+        invformitem.customer.as_("customer"),
+        invformitem.couple_customer.as_("couple_customer"),
+        invformitem.total
+    ).run(as_dict=True)
 
-    total_items = sum([re["total"] for re in result if re["total"]]) or 0
+    totals = {"debit": 0, "credit": 0}
+    if not result:
+        return totals
 
-    return total_items
+    party_type = filters.get("party_type")
+    if party_type == "Supplier":
+        for row in result:
+            row_total = flt(row.get("total") or 0)
+            if not row_total:
+                continue
+            if row.get("customer") == party and bool(row.get("couple_customer")):
+                totals["debit"] += abs(row_total)
+            elif row.get("supplier") == party:
+                totals["credit"] += row_total
+    else:
+        totals["debit"] = sum([flt(re.get("total") or 0) for re in result]) or 0
+
+    return totals
 
 def get_draft_total_commission(filters, party):
     invform = frappe.qb.DocType("Invoice Form")
-    invformitem = frappe.qb.DocType("Invoice Form Item")
     
-    # Build query with couple customer logic
-    query = frappe.qb.from_(invform).left_join(invformitem).on(
-        invformitem.parent == invform.name
-    ).where(invform.company == filters.get('company')).where(
+    query = frappe.qb.from_(invform).where(
+        invform.company == filters.get('company')
+    ).where(
         invform.docstatus == 0
     ).where(
         invform.posting_date.lt(filters.get("from_date"))
+    ).where(
+        invform.supplier == party
     )
-    
-    # Apply couple customer logic
-    if filters.get("party_type") == "Supplier":
-        query = query.where(
-            (invform.supplier == party) | 
-            ((invformitem.customer == party) & (invformitem.couple_customer == 1))
-        )
     
     result = query.select(
         Sum(invform.total_commissions_and_taxes).as_("commission")
     ).run(as_dict=True)
 
-    total_commission = sum([re["commission"] for re in result if re["commission"]]) or 0
-
-    return total_commission
+    return result[0].get("commission") or 0
 
 def get_draft_total_payments(filters, party):
     entry = frappe.qb.DocType("Payment Entry")

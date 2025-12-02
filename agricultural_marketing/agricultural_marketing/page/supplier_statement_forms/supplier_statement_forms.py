@@ -400,6 +400,32 @@ def process_buying_result_and_totals(result, data, filters):
                 "total": total_before_tax
             })
 
+def get_buying_total_before_from_date(filters, party):
+    """Fetch total buying amount for a supplier before the selected from_date."""
+    if not filters.get("from_date") or filters.get("party_type") != "Supplier":
+        return 0
+
+    invform = frappe.qb.DocType("Invoice Form")
+    invformitem = frappe.qb.DocType("Invoice Form Item")
+
+    buying_query = (
+        frappe.qb.from_(invform)
+        .left_join(invformitem)
+        .on(invformitem.parent == invform.name)
+        .where(invform.company == filters.get("company"))
+        .where(invformitem.customer == party)
+        .where(invform.supplier != invformitem.customer)
+        .where(invform.posting_date.lt(filters.get("from_date")))
+    )
+
+    if filters.get("consider_draft"):
+        buying_query = buying_query.where(invform.docstatus.isin([0, 1]))
+    else:
+        buying_query = buying_query.where(invform.docstatus == 1)
+
+    result = buying_query.select(Sum(invformitem.total).as_("total")).run(as_dict=True)
+    return sum([row.get("total") for row in result if row.get("total")]) or 0
+
 def get_payments_details(data, filters):
     entry = frappe.qb.DocType("Payment Entry")
     payments_query = frappe.qb.from_(entry).where(entry.company == filters.get('company'))
@@ -526,6 +552,10 @@ def get_party_summary(filters, party_type, party, party_data):
         else:
             debit += total_items
             credit += total_payments
+
+    if filters.get("party_type") == "Supplier":
+        previous_buying_total = get_buying_total_before_from_date(filters, party) or 0
+        debit += previous_buying_total
 
     # Calculate totals
     total_sales, total_commission_with_taxes = get_total_sales_and_commissions(party_data)
