@@ -79,6 +79,7 @@
     {{ _("إلى تاريخ") }}: {{ filters.to_date }}
 </div>
 <hr>
+{% set total_commission_with_taxes = namespace(tcwt=0)  %}
 {% if summary %}
 <!--Summary Table-->
 <div>
@@ -95,6 +96,9 @@
     </thead>
     <tbody>
     {% for sum in summary %}
+    {% if sum.statement == "Commission + VAT" %}
+    {% set total_commission_with_taxes.tcwt = sum.debit %}
+    {% endif %}
     <tr>
         <td> {% if sum.statement == "Opening Balance" %} الرصيد الافتتاحى 
             {% elif sum.statement  == "Total" %} الاجمالي 
@@ -104,6 +108,7 @@
             {% elif sum.statement == "Duration Payments" %}المدفوعات خلال الفترة 
             {% elif sum.statement %}{{sum.statement}}
             {% endif %}</td>
+
         <td style="direction: ltr;"> {% if sum.debit %} {{ frappe.format_value(sum.debit, {"fieldtype": "Currency"}) }} {% endif %}</td>
         <td style="direction: ltr;"> {% if sum.credit %} {{ frappe.format_value(sum.credit, {"fieldtype": "Currency"}) }} {% endif %}</td>
         <td style="direction: ltr;"> {% if sum.balance %} {{ frappe.format_value(sum.balance, {"fieldtype": "Currency"}) }} {% endif %}</td>
@@ -133,18 +138,26 @@
     </tr>
     </thead>
     <tbody>
+    {% set total_commission_without_taxes = namespace(tcwt=0)  %}
+    {% set total_item_qty = namespace(tiq=0)  %}
     {% for item in items %}
+    {% if item.date == "Total" %} {% set total_commission_without_taxes.tcwt = item.total %} {% endif %}
     <tr>
         <td> {% if item.date == "Total" %} الإجمالى{% else %} {{ item.date }}{% endif %}</td>
         <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %}</td>
         {% if not filters.neglect_items %}
         <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
-        <td> {% if item.qty %} {{ item.qty }} {% endif %}</td>
+        <td> {% if item.qty %} {% set total_item_qty.tiq = total_item_qty.tiq + item.qty %} {{ item.qty }} {% endif %} 
+            {%  if item.date == "Total" %} {{ total_item_qty.tiq }} {% endif %}</td>
         <td style="direction: ltr;"> {% if item.price %} {{ frappe.format_value(item.price, {"fieldtype": "Currency"}) }} {% endif %}</td>
         {% endif %}
         <td style="direction: ltr;"> {% if item.total %} {{ frappe.format_value(item.total, {"fieldtype": "Currency"}) }} {% endif %}</td>
     </tr>
     {% endfor %}
+    <tr>
+        <td colspan="5">الاجمالي الصافي</td>
+        <td> {{ frappe.format_value(total_commission_without_taxes.tcwt - total_commission_with_taxes.tcwt, {"fieldtype": "Currency"}) }}</td>
+    </tr>
     </tbody>
 </table>
 <hr>
@@ -169,13 +182,18 @@
     </tr>
     </thead>
     <tbody>
+    {% set total_item_qty_buying = namespace(tiqb=0)  %}
     {% for item in buying_items %}
+
     <tr>
         <td> {% if item.date == "Total" %} الإجمالى{% else %} {{ item.date }}{% endif %}</td>
         <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %}</td>
         {% if not filters.neglect_items %}
-        <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
-        <td> {% if item.qty %} {{ item.qty }} {% endif %}</td>
+        <td> {% if item.item_name %} {{ item.item_name }} {% set total_item_qty_buying.tiqb = total_item_qty_buying.tiqb + item.qty %} {% endif %}</td>
+        <td> {% if item.qty %} {{ item.qty }} {% endif %}
+            {%  if item.date == "Total" %} {{ total_item_qty_buying.tiqb }} {% endif %}
+            
+        </td>
         <td style="direction: ltr;"> {% if item.price %} {{ frappe.format_value(item.price, {"fieldtype": "Currency"}) }} {% endif %}</td>
         {% endif %}
         <td style="direction: ltr;"> {% if item.total %} {{ frappe.format_value(item.total, {"fieldtype": "Currency"}) }} {% endif %}</td>
