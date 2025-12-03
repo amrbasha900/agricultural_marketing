@@ -67,6 +67,9 @@
 </div>
 
 {% if data %}
+{% set total_qty = namespace(qty=0) %}
+{% set total_debit = namespace(debit=0) %}
+{% set total_credit = namespace(credit=0) %}
 <!--Summary Table-->
 {% for party in data %}
 {% set party_data = data[party] %}
@@ -108,6 +111,14 @@
     <tbody>
     {% if party_data %}
     {% for item in party_data %}
+
+    {% if item.doctype == "Invoice Form" %}
+    {% set total_qty.qty = total_qty.qty + item.qty| float %}
+    {% endif %}
+    {% if item.reference_id != "Opening Balance" %}
+    {% set total_debit.debit = total_debit.debit + item.debit| float %}
+    {% set total_credit.credit = total_credit.credit + item.credit| float %}
+    {% endif %}
     <tr>
         <td> {{ item.reference_id }}</td>
         <td> {% if item.date %} {{ item.date }} {% endif %}</td>
@@ -126,6 +137,19 @@
 <hr>
 {% endfor %}
 {% endif %}
+<hr>
+<table class="table summary-table" id="summary">
+    <tbody>
+        <tr>
+            <td> {{ _("Total Qty") }}</td>
+            <td> {{ total_qty.qty }}</td>
+            <td> {{ _("Total Debit") }}</td>
+            <td> {{ total_debit.debit | round(2) }}</td>
+            <td> {{ _("Total Credit") }}</td>
+            <td> {{ total_credit.credit | round(2) }}</td>
+        </tr>
+    </tbody>
+</table>
 <div id="footer-html" class="visible-pdf">
     <div class="letter-head-footer">
         <div class="row">
