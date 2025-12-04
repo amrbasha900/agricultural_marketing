@@ -122,7 +122,7 @@
     {% if item.doctype == "Invoice Form" %}
     {% set total_qty.qty = total_qty.qty + item.qty| float %}
     {% endif %}
-    {% if item.reference_id != "Opening Balance" %}
+    {% if item.reference_id not in ["Opening Balance", "الرصيد الافتتاحي"] %}
     {% set total_debit.debit = total_debit.debit + item.debit| float %}
     {% set total_credit.credit = total_credit.credit + item.credit| float %}
     {% endif %}
