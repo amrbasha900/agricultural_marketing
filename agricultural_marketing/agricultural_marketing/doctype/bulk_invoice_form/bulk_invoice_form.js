@@ -695,6 +695,8 @@ function delete_item(frm, row, cdn) {
                             message: r.message.message,
                             indicator: "green"
                         });
+                        frm.dirty();
+                        frm.save();
                     } else {
                         frappe.msgprint(__("Error: ") + (r.message ? r.message.message : "Unknown error"));
                     }
@@ -707,6 +709,8 @@ function delete_item(frm, row, cdn) {
             
             // Update reference indicators
             add_reference_indicators(frm);
+            frm.dirty();
+            frm.save();
         }
     });
 }

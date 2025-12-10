@@ -147,18 +147,29 @@
 {% endfor %}
 {% endif %}
 <hr>
-<table class="table summary-table" id="summary">
+<div style="text-align: left;">
+
+<table class="table" id="summary">
     <tbody>
-        <tr>
-            <td> {{ _("Total Qty") }}</td>
-            <td> {{ total_qty.qty }}</td>
-            <td> {{ _("Total Debit") }}</td>
-            <td> {{ total_debit.debit | round(2) }}</td>
-            <td> {{ _("Total Credit") }}</td>
-            <td> {{ total_credit.credit | round(2) }}</td>
-        </tr>
+        <table class="table" id="summary" style="width: 30%;" >
+            <tbody>
+                <tr>
+                    <td> {{ _("Total Qty") }}</td>
+                    <td> {{ total_qty.qty }}</td>
+                </tr>
+                <tr>
+                    <td> {{ _("Total Debit") }}</td>
+                    <td> {{ total_debit.debit | round(2) }}</td>
+                </tr>
+                <tr>
+                    <td> {{ _("Total Credit") }}</td>
+                    <td> {{ total_credit.credit | round(2) }}</td>
+                </tr>
+            </tbody>
+        </table>
     </tbody>
 </table>
+</div>
 <div id="footer-html" class="visible-pdf">
     <div class="letter-head-footer">
         <div class="row">
