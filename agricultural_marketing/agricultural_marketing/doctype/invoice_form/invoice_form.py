@@ -18,17 +18,17 @@ class InvoiceForm(Document):
         pos_profile = frappe.get_doc("POS Profile", settings.get("pos_profile"))
     customer_commission_invoice_refs = []
 
-    def autoname(self):
-        """
-        Custom naming for Invoice Form with RT- prefix for returns
-        """
-        if self.is_return:
-            # For return invoices, use RT- prefix
-            self.name = make_autoname("RT-INV-.YYYY.-.MM.-.#####")
-        else:
-            # For regular invoices, use your existing naming convention
-            # Replace this with your current naming logic if different
-            self.name = make_autoname("INV-.YYYY.-.MM.-.#####")
+    # def autoname(self):
+    #     """
+    #     Custom naming for Invoice Form with RT- prefix for returns
+    #     """
+    #     if self.is_return:
+    #         # For return invoices, use RT- prefix
+    #         self.name = make_autoname("RT-INV-.YYYY.-.MM.-.#####")
+    #     else:
+    #         # For regular invoices, use your existing naming convention
+    #         # Replace this with your current naming logic if different
+    #         self.name = make_autoname("INV-.YYYY.-.MM.-.#####")
 
     def validate(self):
         self.update_grand_total()
@@ -1954,7 +1954,7 @@ def check_bypass_credit_limit(customer, company):
             "company": company
         },
         "bypass_credit_limit_check"
-    )
+    ) 
     
     return bypass == 1
 
@@ -1994,6 +1994,14 @@ def validate_customer_credit_limit(doc, method):
     customers = get_all_customers_from_invoice(doc)
     
     if not customers:
+        return
+    
+    # If no credit limit rows are configured for any of these customers in this company,
+    # skip the validation entirely to avoid blocking save/refresh flows when limits are not used.
+    if not frappe.db.exists(
+        "Customer Credit Limit",
+        {"parent": ["in", customers], "company": doc.company}
+    ):
         return
     
     validation_errors = []

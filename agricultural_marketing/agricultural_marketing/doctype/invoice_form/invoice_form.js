@@ -143,6 +143,14 @@ frappe.ui.form.on("Invoice Form", {
             frm.set_value('return_against', '');
         }
     },before_save: function(frm) {
+        console.log("=== BEFORE SAVE ===");
+        console.log("Document saved successfully");
+        
+        // Force refresh of calculated fields
+        frm.refresh_field('total_commissions_and_taxes');
+        frm.refresh_field('grand_total');
+        frm.refresh_field('commissions');
+        frm.refresh_field('pamper_commission');
         return validate_return_invoice_client_side(frm);
     },
  	customer: function (frm, cdt, cdn) {
@@ -156,10 +164,15 @@ frappe.ui.form.on("Invoice Form", {
  	        row.pamper = frm.doc.pamper;
  	        frm.refresh_field("items");
  	    });
- 	},
-     validate: function(frm) {
-        // Final validation before save
-        //return validate_all_customers_credit_limits(frm);
+ 	},after_save: function(frm) {
+        console.log("=== AFTER SAVE ===");
+        console.log("Document saved successfully");
+        
+        // Force refresh of calculated fields
+        frm.refresh_field('total_commissions_and_taxes');
+        frm.refresh_field('grand_total');
+        frm.refresh_field('commissions');
+        frm.refresh_field('pamper_commission');
     }
 });
 
@@ -657,7 +670,6 @@ function get_all_doctype_fields(frm) {
         });
     }
     
-    console.log('All fields found:', all_fields); // For debugging
     return all_fields;
 }
 
@@ -955,6 +967,15 @@ function check_multiple_customers_credit_limits(frm) {
 
 function calculate_totals_and_check_multiple_credits(frm) {
     calculate_grand_total(frm);
+    if (frm.doc.docstatus === 0) {  // Only for draft documents
+        frm.trigger('update_commission_and_taxes');
+    }
+    
+    // Refresh all financial fields
+    frm.refresh_field('grand_total');
+    frm.refresh_field('total_commissions_and_taxes');
+    frm.refresh_field('commissions');
+    frm.refresh_field('pamper_commission');
     
     // Check credit limits after a short delay
     setTimeout(function() {

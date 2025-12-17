@@ -151,7 +151,7 @@ def get_payments_details(filters):
 
 
 def get_party_summary(filters, party_type, data):
-    def append_summary(doctype, reference_id, date, qty, price, statement, debit, credit):
+    def append_summary(doctype, reference_id, date, qty, price, statement, debit, credit, reference_number):
         nonlocal last_balance
         
         # For Invoice Form - swap columns for customer only
@@ -179,7 +179,8 @@ def get_party_summary(filters, party_type, data):
             "price": price,
             "statement": statement,
             "debit": final_debit,
-            "credit": final_credit
+            "credit": final_credit,
+            "reference_number": reference_number
         })
 
     final_data = {}
@@ -256,7 +257,7 @@ def get_party_summary(filters, party_type, data):
                     
                 # For suppliers, handle normally
                 append_summary(d.doctype, d.reference_id, d.date, d.qty, d.price, d.item_name, commission_with_taxes,
-                               d.total)
+                               d.total, d.reference_number)
                 
                 # Update totals - don't swap for customers yet, that happens at the end
                 if party_type == "Customer":
@@ -345,7 +346,7 @@ def select_fields_for_invoices(filters, items_query, _field, invform, invformite
     items_query = items_query.select(Term.wrap_constant("Invoice Form").as_('doctype'),
                                      _field.as_("party"), invform.name.as_("reference_id"),
                                      invform.posting_date.as_("date"), invformitem.qty, invformitem.price,
-                                     invformitem.total, invformitem.item_name)
+                                     invformitem.total, invformitem.item_name, invform.reference_number.as_("reference_number"))
 
     if filters.get("party_type") == "Supplier":
         items_query = items_query.select(invformitem.commission)

@@ -317,11 +317,11 @@ def select_fields_for_invoices(filters, items_query, _field, invform, invformite
     if filters.get("neglect_items"):
         items_query = items_query.select(_field.as_("party"), invform.name.as_("invoice_id"),
                                          invform.posting_date.as_("date"),
-                                         invformitem.total)
+                                         invformitem.total,invform.reference_number.as_("reference_number"))
     else:
         items_query = items_query.select(_field.as_("party"), invform.name.as_("invoice_id"),
                                          invform.posting_date.as_("date"), invformitem.qty, invformitem.price,
-                                         invformitem.total, invformitem.item_name)
+                                         invformitem.total, invformitem.item_name, invform.reference_number.as_("reference_number"))
 
     if filters.get("party_type") == "Supplier":
         items_query = items_query.select(invformitem.commission)

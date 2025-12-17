@@ -138,7 +138,7 @@
     {% for item in items %}
     <tr>
         <td> {% if item.date == "Total" %} الإجمالى{% else %} {{ item.date }}{% endif %}</td>
-        <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %}</td>
+        <td> {% if item.invoice_id %} {{ item.invoice_id }} {% endif %} {% if item.reference_number %} <br>  {{ item.reference_number }} {% endif %}</td>
         {% if not filters.neglect_items %}
         <td> {% if item.item_name %} {{ item.item_name }} {% endif %}</td>
         <td> {% if item.qty %} {{ item.qty |float  | round(2)}} {% endif %}</td>

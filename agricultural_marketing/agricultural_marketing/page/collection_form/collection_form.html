@@ -118,7 +118,7 @@
     {% if party_data %}
     {% for item in party_data %}
     <tr>
-        <td> {{ item.reference_id }}</td>
+        <td> {{ item.reference_id }} {% if item.reference_number %} <br>  {{ item.reference_number }} {% endif %}</td>
         <td> {% if item.date %} {{ item.date }} {% endif %}</td>
         <td style="direction: ltr;"> {% if item.debit %} {{ frappe.format_value(item.debit, {"fieldtype": "Currency"}) }} {% endif %}</td>
         <td style="direction: ltr;"> {% if item.credit %} {{ frappe.format_value(item.credit, {"fieldtype": "Currency"}) }} {% endif %}</td>

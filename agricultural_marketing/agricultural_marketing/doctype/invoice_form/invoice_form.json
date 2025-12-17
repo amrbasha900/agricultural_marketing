@@ -9,6 +9,7 @@
   "section_break_zpo6",
   "naming_series",
   "company",
+  "reference_number",
   "sent_via_whatsapp",
   "is_printed",
   "column_break_rame",
@@ -299,13 +300,19 @@
    "fieldname": "invoice_remark",
    "fieldtype": "Small Text",
    "label": "Invoice Remark"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "reference_number",
+   "fieldtype": "Data",
+   "label": "Reference Number"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-08-20 21:48:00.934464",
+ "modified": "2025-12-17 12:51:50.330041",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",
