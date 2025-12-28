@@ -152,6 +152,30 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
     });
     company.$wrapper.removeClass('col-md-2').addClass('col-md-3');
 
+    // Statement template selector
+    let templateField = page.add_field({
+        label: __('Statement Form Template'),
+        fieldtype: 'Link',
+        fieldname: 'statement_form_template',
+        options: 'Statement Form Template',
+        default: savedFilters.statement_form_template || '',
+        change: saveFilters
+    });
+    templateField.$wrapper.removeClass('col-md-2').addClass('col-md-3');
+
+    // Prefill default template if none is selected
+    if (!templateField.get_value()) {
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_default_statement_form_template',
+            callback: function (r) {
+                if (r.message && !templateField.get_value()) {
+                    templateField.set_value(r.message);
+                    saveFilters();
+                }
+            }
+        });
+    }
+
     let fromDate = page.add_field({
         label: 'From Date',
         fieldtype: 'Date',

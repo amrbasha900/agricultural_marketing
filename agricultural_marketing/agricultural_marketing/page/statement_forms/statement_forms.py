@@ -1,8 +1,9 @@
 import json
 import os
 import random
+from sys import exception
 import frappe
-from frappe import _
+from frappe import _, error_log
 from frappe.utils import getdate, flt, now
 from frappe.utils.jinja_globals import is_rtl
 from frappe.utils.pdf import get_pdf as _get_pdf
@@ -73,7 +74,36 @@ def get_data(data, filters):
     return data
 
 
-def get_html_format():
+def get_default_template_name():
+    """Return the default Statement Form Template name, or any available one."""
+    template_name = frappe.db.get_value("Statement Form Template", {"default": 1}, "name")
+    if not template_name:
+        template_name = frappe.db.get_value("Statement Form Template", {}, "name")
+    return template_name
+
+
+@frappe.whitelist()
+def get_default_statement_form_template():
+    """Expose default template name for the client side selection field."""
+    return get_default_template_name()
+
+
+def get_html_template_format(template_name=None):
+    """
+    Resolve the HTML template used for statement PDFs.
+    Prefers the Statement Form Template Doctype; falls back to bundled HTML.
+    """
+    template_to_use = template_name or get_default_template_name()
+
+    if template_to_use:
+        try:
+            template_doc = frappe.get_doc("Statement Form Template", template_to_use)
+            if template_doc.template:
+                return template_doc.template
+        except Exception:
+            # Fallback to bundled template if the doc is missing or invalid
+            pass
+
     template_filename = os.path.join("statement_forms" + '.html')
     folder = os.path.dirname(frappe.get_module("agricultural_marketing" + "." + "agricultural_marketing" +
                                                "." + "page").__file__)
@@ -509,7 +539,7 @@ def send_whatsapp_msg(filters):
         return {
             "error": "No data matches the chosen criteria"
         }
-    html_format = get_html_format()
+    html_format = get_html_template_format(filters.get("statement_form_template"))
 
     for key, value in data.items():
         # Get summary table data
@@ -530,27 +560,28 @@ def send_whatsapp_msg(filters):
             "layout_direction": "rtl" if is_rtl() else "ltr",
             "font_size": font_size
         }
-
-        html = frappe.render_template(html_format, context)
-        content = _get_pdf(html, {"orientation": "Portrait"})
-        file_name = "{0}-{1}.pdf".format(key, str(random.randint(1000, 9999)))
-        file_doc = frappe.new_doc("File")
-        file_doc.update({
-            "file_name": file_name,
-            "is_private": 0,
-            "content": content
-        })
-        file_doc.save(ignore_permissions=True)
-        file_urls.append(file_doc.file_url)
-        whatsapp_messages.append(create_whatsapp_messages(
-            party_type=filters.get("party_type"),
-            party_name=key,
-            pdf_url=file_doc.file_url,
-            reference_document = 'Page',
-            document_name = 'statement-forms',
-        ))
-
-    frappe.db.commit()
+        try:
+            html = frappe.render_template(html_format, context)
+            content = _get_pdf(html, {"orientation": "Portrait"})
+            file_name = "{0}-{1}.pdf".format(key, str(random.randint(1000, 9999)))
+            file_doc = frappe.new_doc("File")
+            file_doc.update({
+                "file_name": file_name,
+                "is_private": 0,
+                "content": content
+            })
+            file_doc.save(ignore_permissions=True)
+            file_urls.append(file_doc.file_url)
+            whatsapp_messages.append(create_whatsapp_messages(
+                party_type=filters.get("party_type"),
+                party_name=key,
+                pdf_url=file_doc.file_url,
+                reference_document = 'Page',
+                document_name = 'statement-forms',
+            ))
+        except Exception as e:
+            frappe.log_error(message=f"Error PDF HTML Tempalte : {str(e)}", title="Error PDF HTML Tempalte")
+        frappe.db.commit()
     
     return {"success": f"WhatsApp message logged"}
 
@@ -781,6 +812,12 @@ def queue_pdf_generation(filters):
     if isinstance(filters, str):
         filters = json.loads(filters)
     
+    # Ensure template is specified; fall back to default template if missing
+    if not filters.get("statement_form_template"):
+        default_template = get_default_template_name()
+        if default_template:
+            filters["statement_form_template"] = default_template
+
     # First, get ALL data to see which parties actually have data
     frappe.publish_realtime("pdf_generation_status", {"message": "Checking for parties with data..."})
     
@@ -963,7 +1000,7 @@ def generate_single_party_pdf(log_id, party_name=None, history_id=None):
                 log_doc.status = "Failed"
                 log_doc.error_message = error_msg[:500]  # Limit error message length
                 if history_id:
-                    update_history_item_status(history_id, log_id, "Failed", error_message=error_msg[:500])
+                    update_history_item_status(history_id, log_id, "Failed", error_message=error_msg)
             except Exception as update_error:
                 frappe.log_error(message=f"Failed to update error status for {log_id}: {str(update_error)}", title="PDF Generation")
                 return
@@ -997,7 +1034,7 @@ def generate_single_pdf(filters, party_name):
         if not data or party_name not in data:
             return {"error": f"No data found for party: {party_name}"}
         
-        html_format = get_html_format()
+        html_format = get_html_template_format(filters.get("statement_form_template"))
         value = data[party_name]
         
         # Get summary table data
@@ -1022,19 +1059,20 @@ def generate_single_pdf(filters, party_name):
             "layout_direction": "rtl" if is_rtl() else "ltr",
             "font_size": font_size
         }
-        
-        html = frappe.render_template(html_format, context)
-        content = _get_pdf(html, {"orientation": "Portrait"})
-        file_name = "{0}-{1}.pdf".format(party_name, str(random.randint(1000, 9999)))
-        
-        file_doc = frappe.new_doc("File")
-        file_doc.update({
-            "file_name": file_name,
-            "is_private": 0,
-            "content": content
-        })
-        file_doc.save(ignore_permissions=True)
-        
+        try:
+            html = frappe.render_template(html_format, context)
+            content = _get_pdf(html, {"orientation": "Portrait"})
+            file_name = "{0}-{1}.pdf".format(party_name, str(random.randint(1000, 9999)))
+            
+            file_doc = frappe.new_doc("File")
+            file_doc.update({
+                "file_name": file_name,
+                "is_private": 0,
+                "content": content
+            })
+            file_doc.save(ignore_permissions=True)
+        except Exception as e:
+            frappe.log_error(message=f"Error PDF HTML Tempalte : {str(e)}", title="Error PDF HTML Tempalte")
         return {"success": True, "file_url": file_doc.file_url}
         
     except Exception as e:

@@ -273,6 +273,9 @@ fixtures = [
         "Item Group-custom_commission_percentage",
         "Customer-custom_couple_customer"
         ]]]},
+        {"dt": "Statement Form Template", "filters": [["name", "in", [
+        "أساسي","نموذج 2", "نموذج 1","نموذج 3"]]]},
+        
 ]
 jinja = {
     "methods": [
