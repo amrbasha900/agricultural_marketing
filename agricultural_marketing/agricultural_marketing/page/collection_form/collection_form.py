@@ -277,10 +277,10 @@ def get_party_summary(filters, party_type, data):
                 # - "Receive" payments always go to CREDIT
                 # - "Pay" payments always go to DEBIT
                 if d.payment_type == "Receive":
-                    append_summary(d.doctype, d.reference_id, d.date, "", "", statement, 0, abs(flt(d.paid_amount, 2)))
+                    append_summary(d.doctype, d.reference_id, d.date, "", "", statement, 0, abs(flt(d.paid_amount, 2)), "")
                     total_credit += abs(flt(d.paid_amount, 2))
                 else:  # "Pay"
-                    append_summary(d.doctype, d.reference_id, d.date, "", "", statement, abs(flt(d.paid_amount, 2)), 0)
+                    append_summary(d.doctype, d.reference_id, d.date, "", "", statement, abs(flt(d.paid_amount, 2)), 0, "")
                     total_debit += abs(flt(d.paid_amount, 2))
 
         # Calculate and append closing

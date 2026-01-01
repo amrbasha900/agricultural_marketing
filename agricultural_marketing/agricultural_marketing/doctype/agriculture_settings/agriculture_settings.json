@@ -17,6 +17,8 @@
   "supplier_commission_item",
   "commission_based_on",
   "allow_couple_account",
+  "use_default_customer_in_tax_invoice",
+  "default_customer",
   "column_break_nyvz",
   "commission_item",
   "pos_profile",
@@ -282,13 +284,27 @@
    "fieldname": "show_customer_credit_details",
    "fieldtype": "Check",
    "label": "Show Customer Credit Limit Details"
+  },
+  {
+   "depends_on": "eval:doc.use_default_customer_in_tax_invoice == 1",
+   "fieldname": "default_customer",
+   "fieldtype": "Link",
+   "label": "Default Customer",
+   "mandatory_depends_on": "eval:doc.use_default_customer_in_tax_invoice == 1",
+   "options": "Customer"
+  },
+  {
+   "default": "0",
+   "fieldname": "use_default_customer_in_tax_invoice",
+   "fieldtype": "Check",
+   "label": "Use Default Customer In Tax Invoice"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-08-02 22:20:52.824946",
+ "modified": "2025-12-31 14:25:00.894306",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",
