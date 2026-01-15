@@ -271,7 +271,8 @@ fixtures = [
         "Supplier-custom_is_farmer",
         "Item-custom_commission_percentage",
         "Item Group-custom_commission_percentage",
-        "Customer-custom_couple_customer"
+        "Customer-custom_couple_customer",
+        "Item Group-custom_commission_item"
         ]]]},
         {"dt": "Statement Form Template", "filters": [["name", "in", [
         "أساسي","نموذج 2", "نموذج 1","نموذج 3"]]]},

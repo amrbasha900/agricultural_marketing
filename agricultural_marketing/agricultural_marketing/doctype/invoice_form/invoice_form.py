@@ -155,64 +155,150 @@ class InvoiceForm(Document):
 
     def update_commission_and_taxes(self):
         self.total_commissions_and_taxes = 0
-        supplier_commission_item = self.settings.get("supplier_commission_item")
-        if supplier_commission_item:
-            self.set("commissions", [])
-            commission_base = self.settings.get("commission_based_on")
-            self.set("commissions", [])
-            commission_base = self.settings.get("commission_based_on")
-            default_tax_template = get_tax_template(self)
-            tax_rate = frappe.db.get_value("Sales Taxes and Charges", {"parent": default_tax_template}, "rate") or 0
+        self.set("commissions", [])
+        commission_base = self.settings.get("commission_based_on")
+        fallback_commission_item = self.settings.get("supplier_commission_item")
 
-            if commission_base == 'Supplier':
-                supplier_commission_percentage = get_supplier_commission_percentage(self.supplier)
+        # Map item_code -> item_group from Item doctype (Invoice Form Item has no item_group)
+        item_codes = {item.item_code for item in self.items if getattr(item, "item_code", None)}
+        item_code_groups = {}
+        if item_codes:
+            item_rows = frappe.get_all(
+                "Item",
+                filters={"name": ["in", list(item_codes)]},
+                fields=["name", "item_group"],
+            )
+            item_code_groups = {row.name: row.item_group for row in item_rows if row.get("item_group")}
 
-                default_tax_template = get_tax_template(self)
-                tax_rate = frappe.db.get_value("Sales Taxes and Charges",
-                                            {"parent": default_tax_template}, "rate") or 0
+        # Map item groups to their commission items (custom field on Item Group)
+        item_groups = {item_code_groups.get(item.item_code) for item in self.items if item_code_groups.get(item.item_code)}
+        group_commission_items = {}
+        if item_groups:
+            group_rows = frappe.get_all(
+                "Item Group",
+                filters={"name": ["in", list(item_groups)]},
+                fields=["name", "commission_item"],
+            )
+            group_commission_items = {
+                row.name: row.commission_item for row in group_rows if row.get("commission_item")
+            }
 
-                commission_amount = (self.grand_total * supplier_commission_percentage) / 100
+        # Split items by whether the item group has its own commission item
+        grouped_items = {}
+        remaining_items = []
+        for item in self.items:
+            item_group = item_code_groups.get(item.item_code)
+            commission_item = group_commission_items.get(item_group)
+            if commission_item:
+                grouped_items.setdefault(item_group, {"commission_item": commission_item, "items": []})["items"].append(item)
+            else:
+                remaining_items.append(item)
+
+        # If nothing to process, exit early
+        if not grouped_items and not (fallback_commission_item and self.items):
+            return
+
+        default_tax_template = get_tax_template(self)
+        tax_rate = frappe.db.get_value("Sales Taxes and Charges", {"parent": default_tax_template}, "rate") or 0
+
+        if commission_base == 'Supplier':
+            supplier_commission_percentage = get_supplier_commission_percentage(self.supplier)
+
+            # Per-item-group commission items
+            for _, data in grouped_items.items():
+                group_total = sum(it.total for it in data["items"])
+                commission_amount = (group_total * supplier_commission_percentage) / 100
                 tax_amount = (commission_amount * tax_rate) / 100
                 commission_total_with_taxes = commission_amount + tax_amount
-                total_commission_amount = 0
-                for item in self.items:
-                    item.commission = (item.total * supplier_commission_percentage) / 100
-                    total_commission_amount += (item.total * supplier_commission_percentage) / 100
+
+                for it in data["items"]:
+                    it.commission = (it.total * supplier_commission_percentage) / 100
+
                 self.append("commissions", {
-                    "item": supplier_commission_item,
-                    "price": self.grand_total,
+                    "item": data["commission_item"],
+                    "price": group_total,
                     "commission": supplier_commission_percentage,
+                    "taxes": tax_rate,
+                    "commission_total": commission_total_with_taxes,
+                    "total_commission": commission_amount
+                })
+                self.total_commissions_and_taxes += commission_total_with_taxes
+
+            # Fallback to settings item for items without group commission item
+            if remaining_items and fallback_commission_item:
+                remaining_total = sum(it.total for it in remaining_items)
+                commission_amount = (remaining_total * supplier_commission_percentage) / 100
+                tax_amount = (commission_amount * tax_rate) / 100
+                commission_total_with_taxes = commission_amount + tax_amount
+
+                for it in remaining_items:
+                    it.commission = (it.total * supplier_commission_percentage) / 100
+
+                self.append("commissions", {
+                    "item": fallback_commission_item,
+                    "price": remaining_total,
+                    "commission": supplier_commission_percentage,
+                    "taxes": tax_rate,
+                    "commission_total": commission_total_with_taxes,
+                    "total_commission": commission_amount
+                })
+                self.total_commissions_and_taxes += commission_total_with_taxes
+
+        elif commission_base == 'Item':
+            # Per-item-group commission items (item-level percentages)
+            for _, data in grouped_items.items():
+                total_commission_amount = 0
+                tax_amount = 0
+                group_total = 0
+
+                for it in data["items"]:
+                    group_total += it.total
+                    item_commission_percentage = get_item_commission_percentage(it.item_code) or 0
+                    item_commission_amount = (it.total * item_commission_percentage) / 100
+                    item_tax_amount = (item_commission_amount * tax_rate) / 100
+                    total_commission_amount += item_commission_amount
+                    tax_amount += item_tax_amount
+                    it.commission = item_commission_amount
+
+                commission_total_with_taxes = total_commission_amount + tax_amount
+                effective_commission_rate = round((total_commission_amount / group_total) * 100, 2) if group_total else 0
+
+                self.append("commissions", {
+                    "item": data["commission_item"],
+                    "price": group_total,
+                    "commission": effective_commission_rate,
                     "taxes": tax_rate,
                     "commission_total": commission_total_with_taxes,
                     "total_commission": total_commission_amount
                 })
-                self.total_commissions_and_taxes = commission_total_with_taxes
-                for item in self.items:
-                    item.commission = (item.total * supplier_commission_percentage) / 100
-            elif commission_base == 'Item':
+                self.total_commissions_and_taxes += commission_total_with_taxes
+
+            # Fallback to settings item for items without group commission item
+            if remaining_items and fallback_commission_item:
                 total_commission_amount = 0
                 tax_amount = 0
+                remaining_total = 0
 
-                for item in self.items:
-                    item_commission_percentage = get_item_commission_percentage(item.item_code) or 0
-                    item_commission_amount = (item.total * item_commission_percentage) / 100
+                for it in remaining_items:
+                    remaining_total += it.total
+                    item_commission_percentage = get_item_commission_percentage(it.item_code) or 0
+                    item_commission_amount = (it.total * item_commission_percentage) / 100
                     item_tax_amount = (item_commission_amount * tax_rate) / 100
                     total_commission_amount += item_commission_amount
                     tax_amount += item_tax_amount
-
-                    item.commission = item_commission_amount  # Set item-level commission
-
-                self.append("commissions", {
-                    "item": supplier_commission_item,
-                    "price": self.grand_total,
-                    "commission": round((total_commission_amount / self.grand_total) * 100, 2) if self.grand_total else 0,
-                    "taxes": tax_rate,
-                    "commission_total": total_commission_amount + tax_amount,
-                    "total_commission": total_commission_amount
-                })
+                    it.commission = item_commission_amount
 
                 commission_total_with_taxes = total_commission_amount + tax_amount
-                self.total_commissions_and_taxes = commission_total_with_taxes
+
+                self.append("commissions", {
+                    "item": fallback_commission_item,
+                    "price": remaining_total,
+                    "commission": round((total_commission_amount / remaining_total) * 100, 2) if remaining_total else 0,
+                    "taxes": tax_rate,
+                    "commission_total": commission_total_with_taxes,
+                    "total_commission": total_commission_amount
+                })
+                self.total_commissions_and_taxes += commission_total_with_taxes
                 
     def make_gl_entries(self):
         gl_entries = []
