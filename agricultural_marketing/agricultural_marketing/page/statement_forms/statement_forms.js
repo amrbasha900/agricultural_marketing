@@ -81,6 +81,8 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
     // Global variables
     let currentHistoryId = null;
     let refreshInterval = null;
+    let lastWhatsAppJobId = null;
+    let lastWhatsAppJobName = null;
 
     // SECTION 2: Field definitions with saved filters
     function getSavedFilters() {
@@ -483,6 +485,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
                         <button class="btn btn-sm sf-action-btn btn-success" id="download-all" style="margin: 5px;">${__('Download All (ZIP)')}</button>
                         <button class="btn btn-sm sf-action-btn btn-warning" id="send-all-whatsapp" style="margin: 5px;">${__('Send All WhatsApp')}</button>
                         <button class="btn btn-sm sf-action-btn btn-outline-warning" id="retry-all-whatsapp" style="margin: 5px;">${__('Retry All WhatsApp')}</button>
+                        <button class="btn btn-sm sf-action-btn btn-outline-danger" id="cancel-whatsapp-queue" style="margin: 5px;">${__('Cancel WhatsApp Queue')}</button>
                         ${(failedJobs > 0 && historyId) ? `<button class=\"btn btn-sm sf-action-btn btn-outline-danger\" id=\"retry-all-failed\" style=\"margin: 5px;\">${__('Retry All Failed')}</button>` : ''}
                         ${(showRetryQueuedFailedBtn && historyId) ? `<button class=\"btn btn-sm sf-action-btn btn-outline-danger\" id=\"retry-all-queued-failed\" style=\"margin: 5px;\">${__('Retry All Queued/Failed')}</button>` : ''}
                         ${historyId ? `<button class="btn btn-sm sf-action-btn btn-outline-info" id="view-history-details" style="margin: 5px;">${__('View History')}</button>` : ''}
@@ -757,6 +760,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
 
     // SECTION 6: Event handling and history functions
     function bindStatusEvents(historyId = null) {
+        updateWhatsAppQueueControls();
         $('#show-report-info').on('click', function () {
             showReportInfo();
         });
@@ -962,6 +966,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
                         callback: function (r) {
                             if (r.message && r.message.success) {
                                 frappe.show_alert({ message: r.message.success, indicator: 'green' });
+                                setWhatsAppJobDetails(r.message);
                                 loadPDFStatusByHistory(hid);
                                 startAutoRefresh();
                             } else {
@@ -971,6 +976,18 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
                     });
                 },
                 () => { }
+            );
+        });
+
+        $('#cancel-whatsapp-queue').on('click', function () {
+            if (!lastWhatsAppJobId && !lastWhatsAppJobName) {
+                frappe.msgprint(__('No WhatsApp queue job to cancel.'));
+                return;
+            }
+            frappe.confirm(
+                __('Are you sure you want to cancel the WhatsApp queue job?'),
+                () => cancelWhatsAppQueueJob(),
+                () => frappe.msgprint(__('Cancelled'))
             );
         });
     }
@@ -1397,6 +1414,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
             callback: function (r) {
                 if (r.message && r.message.success) {
                     frappe.show_alert({ message: r.message.success, indicator: 'green' });
+                    setWhatsAppJobDetails(r.message);
                     loadPDFStatusByHistory(historyId);
                     startAutoRefresh();
                 } else {
@@ -1413,12 +1431,44 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
             callback: function (r) {
                 if (r.message && r.message.success) {
                     frappe.show_alert({ message: r.message.success, indicator: 'green' });
+                    setWhatsAppJobDetails(r.message);
                     if (currentHistoryId) {
                         loadPDFStatusByHistory(currentHistoryId);
                         startAutoRefresh();
                     }
                 } else {
                     frappe.msgprint(__('Failed to queue WhatsApp messages: ') + (r.message && r.message.error ? r.message.error : 'Unknown error'));
+                }
+            }
+        });
+    }
+
+    function setWhatsAppJobDetails(message) {
+        lastWhatsAppJobId = message.job_id || null;
+        lastWhatsAppJobName = message.job_name || null;
+        updateWhatsAppQueueControls();
+    }
+
+    function updateWhatsAppQueueControls() {
+        const hasJob = Boolean(lastWhatsAppJobId || lastWhatsAppJobName);
+        $('#cancel-whatsapp-queue').prop('disabled', !hasJob);
+    }
+
+    function cancelWhatsAppQueueJob() {
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.cancel_whatsapp_job',
+            args: {
+                job_id: lastWhatsAppJobId,
+                job_name: lastWhatsAppJobName
+            },
+            callback: function (r) {
+                if (r.message && r.message.success) {
+                    frappe.show_alert({ message: r.message.success, indicator: 'green' });
+                    lastWhatsAppJobId = null;
+                    lastWhatsAppJobName = null;
+                    updateWhatsAppQueueControls();
+                } else {
+                    frappe.msgprint(__('Failed to cancel WhatsApp queue: ') + (r.message && r.message.error ? r.message.error : 'Unknown error'));
                 }
             }
         });
