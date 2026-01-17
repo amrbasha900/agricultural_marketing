@@ -2134,6 +2134,7 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
             is_async=True,
         )
         job_id = job.get_id() if hasattr(job, "get_id") else getattr(job, "id", job)
+        job_id = job.id if hasattr(job, "id") else job
         return {
             "success": f"Queued {len(ids)} WhatsApp messages (rate-limited every {delay_seconds}s)",
             "queued": len(ids),
@@ -2153,11 +2154,16 @@ def cancel_whatsapp_job(job_id=None, job_name=None):
     try:
         resolved_job_id = job_id
         job_row = None
+    from frappe.utils.background_jobs import get_job
+
+    try:
+        resolved_job_id = job_id
         if not resolved_job_id and job_name:
             job_rows = frappe.get_all(
                 "RQ Job",
                 filters={"job_name": job_name},
                 fields=["name", "job_id", "status", "queue"],
+                fields=["name", "status"],
                 order_by="creation desc",
                 limit=1,
             )
@@ -2165,6 +2171,7 @@ def cancel_whatsapp_job(job_id=None, job_name=None):
                 return {"error": "WhatsApp queue job not found"}
             job_row = job_rows[0]
             resolved_job_id = job_row.job_id or job_row.name
+            resolved_job_id = job_rows[0].name
 
         if not resolved_job_id:
             return {"error": "No job id provided"}
@@ -2206,6 +2213,7 @@ def cancel_whatsapp_job(job_id=None, job_name=None):
         if job_row and job_row.name:
             row_name = job_row.name
         frappe.db.set_value("RQ Job", row_name, "status", "cancelled")
+        frappe.db.set_value("RQ Job", resolved_job_id, "status", "cancelled")
         frappe.db.commit()
         return {"success": "WhatsApp queue cancelled", "job_id": resolved_job_id}
     except Exception as e:
