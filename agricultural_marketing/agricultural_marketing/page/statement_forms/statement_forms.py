@@ -1430,8 +1430,9 @@ def send_whatsapp_for_party(log_id):
         
         if log_doc.status != "Completed" or not log_doc.pdf_file:
             return {"error": "PDF not ready for this party"}
-        
-        # Allow re-send even if previously sent
+
+        if log_doc.whatsapp_sent or log_doc.whatsapp_status in ("Sent", "Delivered"):
+            return {"error": "WhatsApp message already sent for this party"}
         
         # Send WhatsApp message
         whatsapp_result = create_whatsapp_messages(
@@ -1985,6 +1986,8 @@ def queue_whatsapp_for_party(log_id):
         log_doc = frappe.get_doc("PDF Generator Log", log_id)
         if log_doc.status != "Completed" or not log_doc.pdf_file:
             return {"error": "PDF not ready for this party"}
+        if log_doc.whatsapp_sent or log_doc.whatsapp_status in ("Sent", "Delivered"):
+            return {"error": "WhatsApp message already sent for this party"}
 
         # Mark history child whatsapp_status as Queued immediately (if linked)
         if hasattr(log_doc, 'statement_generation_history') and log_doc.statement_generation_history:
@@ -2092,6 +2095,24 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
                     ids = []
             elif isinstance(log_ids, list):
                 ids = log_ids
+
+            if ids:
+                logs = frappe.get_all(
+                    "PDF Generator Log",
+                    filters={"name": ["in", ids]},
+                    fields=["name", "status", "pdf_file", "whatsapp_status", "whatsapp_sent"],
+                )
+                eligible_statuses = {"Not Created", None, ""}
+                if retry_failed:
+                    eligible_statuses = {"Not Created", None, "", "Failed"}
+                ids = [
+                    log.name
+                    for log in logs
+                    if log.status == "Completed"
+                    and log.pdf_file
+                    and not log.whatsapp_sent
+                    and log.whatsapp_status in eligible_statuses
+                ]
         
         # Process in one background job with delay between messages (>=4s)
         delay_cfg = frappe.db.get_single_value("Agriculture Settings", "delay_between_messages_seconds") or 4

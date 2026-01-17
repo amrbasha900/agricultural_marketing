@@ -665,8 +665,12 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
 
         if (log.status === 'Completed' && log.pdf_file) {
             buttons += `<button class="btn btn-sm sf-action-btn btn-info download-pdf" data-url="${log.pdf_file}">${__('Download')}</button> `;
-            const label = (!log.whatsapp_sent || log.whatsapp_status === 'Not Created') ? __('Send WhatsApp') : __('Re-send WhatsApp');
-            buttons += `<button class="btn btn-sm btn-primary send-whatsapp" data-log-id="${log.name}">${label}</button>`;
+            const isSent = log.whatsapp_status === 'Sent' || log.whatsapp_status === 'Delivered' || log.whatsapp_sent;
+            if (!isSent && (!log.whatsapp_status || log.whatsapp_status === 'Not Created' || log.whatsapp_status === 'Failed')) {
+                buttons += `<button class="btn btn-sm btn-primary send-whatsapp" data-log-id="${log.name}">${__('Send WhatsApp')}</button>`;
+            } else if (isSent) {
+                buttons += `<span class="text-success">${__('WhatsApp Sent')}</span>`;
+            }
         } else if (log.status === 'Failed') {
             buttons += `<button class="btn btn-sm btn-warning retry-pdf" data-log-id="${log.name}">${__('Retry')}</button> `;
             buttons += `<small class="text-danger">${log.error_message || 'Generation failed'}</small>`;
