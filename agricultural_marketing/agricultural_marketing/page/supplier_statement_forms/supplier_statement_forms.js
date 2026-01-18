@@ -1414,7 +1414,15 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                         startAutoRefresh();
                     }
                 } else {
-                    frappe.msgprint(__('Failed to queue WhatsApp: ') + (r.message && r.message.error ? r.message.error : 'Unknown error'));
+                    const errorText = (r.message && r.message.error) ? r.message.error : 'Unknown error';
+                    frappe.msgprint(__('Failed to queue WhatsApp: ') + errorText);
+                    if (errorText.toLowerCase().includes('already sent')) {
+                        if (historyId) {
+                            loadPDFStatusByHistory(historyId);
+                        } else if (currentHistoryId) {
+                            loadPDFStatusByHistory(currentHistoryId);
+                        }
+                    }
                 }
             }
         });

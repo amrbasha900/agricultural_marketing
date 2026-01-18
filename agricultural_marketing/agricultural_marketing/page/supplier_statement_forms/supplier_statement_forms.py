@@ -889,12 +889,40 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
         if not whatsapp_number:
             return {"error": f"WhatsApp number not found for {party_name}"}
 
+        normalized_number = "".join(ch for ch in str(whatsapp_number) if ch.isdigit())
+        recipient_number = normalized_number or str(whatsapp_number).strip()
+        if len(recipient_number) <= 5:
+            return {"error": "Invalid WhatsApp number. It must be more than 5 digits."}
+
+        delay_cfg = frappe.db.get_single_value("Agriculture Settings", "delay_between_messages_seconds") or 6
+        try:
+            delay_seconds = int(delay_cfg)
+        except Exception:
+            delay_seconds = 6
+        if delay_seconds < 6:
+            delay_seconds = 6
+
+        session_name = frappe.db.get_single_value("Agriculture Settings", "whatsapp_session") or "default"
+        cache = frappe.cache()
+        cache_key = f"wa_last_sent:{session_name}"
+        last_sent_ts = cache.get_value(cache_key) or 0
+        now_ts = time.time()
+        remaining = delay_seconds - (now_ts - float(last_sent_ts))
+        if remaining > 0:
+            frappe.logger("whatsapp_throttle").info(
+                "Throttling WhatsApp send for session %s (sleep %.2fs)",
+                session_name,
+                remaining,
+            )
+            time.sleep(remaining)
+        cache.set_value(cache_key, time.time())
+
         # Create a new WhatsApp Messages entry
         whatsapp_messages = frappe.get_doc({
             "doctype": "WhatsApp Messages",
             "party_type": party_type,
             "party_name": party_name,
-            "phone_number": whatsapp_number,
+            "phone_number": recipient_number,
             "has_media": 1,
             "message": whatsapp_message or "Please find your supplier statement attached.",
             "status": "Queued",

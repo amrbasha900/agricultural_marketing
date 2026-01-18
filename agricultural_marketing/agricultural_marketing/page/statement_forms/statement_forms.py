@@ -1,4 +1,5 @@
 import json
+import time
 import os
 import random
 from sys import exception
@@ -1093,6 +1094,23 @@ def get_pdf_generation_status(filters=None, history_id=None):
                 display_field = "supplier_name" if history_doc.party_type == "Supplier" else "customer_name"
                 party_display_name = frappe.db.get_value(history_doc.party_type, item.party_name, display_field) or item.party_name
                 
+                whatsapp_status = item.whatsapp_status or "Not Created"
+                if item.whatsapp_message_id:
+                    current_status = frappe.db.get_value(
+                        "WhatsApp Message Log",
+                        item.whatsapp_message_id,
+                        "status",
+                    )
+                    if current_status:
+                        whatsapp_status = current_status
+                        if current_status != (item.whatsapp_status or "Not Created"):
+                            update_history_item_status_safe(
+                                history_doc.name,
+                                item.pdf_generator_log,
+                                item.status,
+                                whatsapp_status=current_status,
+                            )
+
                 log_data = {
                     "name": item.pdf_generator_log,
                     "party_name": item.party_name,
@@ -1101,9 +1119,9 @@ def get_pdf_generation_status(filters=None, history_id=None):
                     "status": item.status,
                     "pdf_file": item.pdf_file,
                     "error_message": item.error_message,
-                    "whatsapp_sent": 1 if item.whatsapp_status in ("Sent", "Delivered", "Read") else 0,
+                    "whatsapp_sent": 1 if whatsapp_status in ("Sent", "Delivered", "Read") else 0,
                     "whatsapp_message_id": item.whatsapp_message_id,
-                    "whatsapp_status": item.whatsapp_status or "Not Created"
+                    "whatsapp_status": whatsapp_status,
                 }
                 
                 # Get additional data from PDF Generator Log if needed
@@ -1533,6 +1551,28 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
 
         if not session_name:
             return {"error": "No WhatsApp Session configured"}
+
+        delay_cfg = frappe.db.get_single_value("Agriculture Settings", "delay_between_messages_seconds") or 6
+        try:
+            delay_seconds = int(delay_cfg)
+        except Exception:
+            delay_seconds = 6
+        if delay_seconds < 6:
+            delay_seconds = 6
+
+        cache = frappe.cache()
+        cache_key = f"wa_last_sent:{session_name}"
+        last_sent_ts = cache.get_value(cache_key) or 0
+        now_ts = time.time()
+        remaining = delay_seconds - (now_ts - float(last_sent_ts))
+        if remaining > 0:
+            frappe.logger("whatsapp_throttle").info(
+                "Throttling WhatsApp send for session %s (sleep %.2fs)",
+                session_name,
+                remaining,
+            )
+            time.sleep(remaining)
+        cache.set_value(cache_key, time.time())
 
         from whatsapp_connector.whatsapp_connector.services.session_service import send_message as _wa_send
 
@@ -2065,8 +2105,8 @@ def process_whatsapp_bulk(log_ids, delay_seconds: int = 4):
             delay_seconds = int(delay_seconds)
         except Exception:
             delay_seconds = 4
-        if delay_seconds < 4:
-            delay_seconds = 4
+        if delay_seconds < 6:
+            delay_seconds = 6
         count = 0
         for lid in log_ids:
             try:
@@ -2163,13 +2203,13 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
             frappe.db.commit()
 
         # Process in one background job with delay between messages (>=4s)
-        delay_cfg = frappe.db.get_single_value("Agriculture Settings", "delay_between_messages_seconds") or 4
+        delay_cfg = frappe.db.get_single_value("Agriculture Settings", "delay_between_messages_seconds") or 6
         try:
             delay_seconds = int(delay_cfg)
         except Exception:
             delay_seconds = 4
-        if delay_seconds < 4:
-            delay_seconds = 4
+        if delay_seconds < 6:
+            delay_seconds = 6
 
         job_label = history_id or ("bulk-" + str(len(ids)))
         job_name = f"WA-Bulk-{job_label}"
