@@ -28,13 +28,17 @@
         padding-left: 10%
     }
 </style>
+<meta name="pdfkit-margin-top" content="30mm">
+<meta name="pdfkit-margin-bottom" content="10mm">
 <body>
 
 <!--Company Details-->
 {% if letter_head %}
-<div>
-    {{ letter_head.content }}
+<div id="header-html" class="hidden-pdf">
+
+{{ letter_head.content }}
 </div>
+<hr>
 {% else %}
 {% if company_defaults %}
 <table class="header-details" style="border:none;">

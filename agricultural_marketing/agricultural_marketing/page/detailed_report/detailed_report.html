@@ -16,7 +16,8 @@
 {% set neglect_items = false %}
 {% endif %}
 <html dir="rtl" lang="ar">
-    
+<meta name="pdfkit-margin-top" content="30mm">
+<meta name="pdfkit-margin-bottom" content="10mm">
 <style>
     .print-format {
         font-family: "Cairo", sans-serif;
@@ -51,8 +52,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Cairo:wght@200..1000&family=Lateef:wght@200;300;400;500;600;700;800&family=Noto+Kufi+Arabic:wght@100..900&family=Scheherazade+New:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 {% if letter_head %}
-{{ letter_head.content }}
+<div id="header-html" class="hidden-pdf">
+
+    {{ letter_head.content }}
+</div>
 <hr>
+</div>
 {% endif %}
 <table class="header-details" style="border:none;direction:rtl">
     <tbody>
@@ -123,7 +128,10 @@
     <div class="letter-head-footer">
         <div class="row">
             <div class="col-xs-4" style="text-align: left;font-size: 12px;">وقت الطباعة : {{frappe.utils.format_datetime(frappe.utils.now(), "dd-mm-yyyy HH:mm:ss")}}</div>
-            <div class="col-xs-8" style="text-align: right;font-size: 12px;"> {% if frappe.db.get_single_value("Agriculture Settings", "report_note") %}<u>{{frappe.db.get_single_value("Agriculture Settings", "report_note")}}</u>  {% endif %}  </div>
+            <div class="col-xs-4" style="text-align: center;direction:rtl;">
+                صفحة  <span class="page footer"></span> من  <span class="topage footer"></span> 
+            </div>
+            <div class="col-xs-4" style="text-align: right;font-size: 12px;"> {% if frappe.db.get_single_value("Agriculture Settings", "report_note") %}<u>{{frappe.db.get_single_value("Agriculture Settings", "report_note")}}</u>  {% endif %}  </div>
         </div>
     </div>
 </div>

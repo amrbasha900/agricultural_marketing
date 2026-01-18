@@ -4,6 +4,8 @@
 {% else %}
 {% set is_supplier = false %}
 {% endif %}
+<meta name="pdfkit-margin-top" content="30mm">
+<meta name="pdfkit-margin-bottom" content="10mm">
 <html dir="{{ layout_direction }}" lang="{{ lang }}">
 <style>
     body {
@@ -36,8 +38,11 @@
 
 <!--Company Details-->
 {% if letter_head %}
-<div>
-    {{ letter_head.content }}
+    <div id="header-html" class="hidden-pdf">
+
+{{ letter_head.content }}
+</div>
+<hr>
 </div>
 {% else %}
 {% if company_defaults %}
@@ -174,7 +179,10 @@
     <div class="letter-head-footer">
         <div class="row">
             <div class="col-xs-4" style="text-align: left;font-size: 12px;">وقت الطباعة : {{frappe.utils.format_datetime(frappe.utils.now(), "dd-mm-yyyy HH:mm:ss")}}</div>
-            <div class="col-xs-8" style="text-align: right;font-size: 12px;"> {% if frappe.db.get_single_value("Agriculture Settings", "report_note") %}<u>{{frappe.db.get_single_value("Agriculture Settings", "report_note")}}</u>  {% endif %}  </div>
+            <div class="col-xs-4" style="text-align: center;direction:rtl;">
+                صفحة  <span class="page footer"></span> من  <span class="topage footer"></span> 
+            </div>
+            <div class="col-xs-4" style="text-align: right;font-size: 12px;"> {% if frappe.db.get_single_value("Agriculture Settings", "report_note") %}<u>{{frappe.db.get_single_value("Agriculture Settings", "report_note")}}</u>  {% endif %}  </div>
         </div>
     </div>
 </div>

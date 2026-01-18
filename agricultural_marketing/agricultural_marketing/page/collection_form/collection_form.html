@@ -5,7 +5,8 @@
 {% set is_supplier = false %}
 {% endif %}
 {% set number_format = frappe.db.get_single_value("System Settings", "number_format") or "#,###.##" %}
-
+<meta name="pdfkit-margin-top" content="30mm">
+<meta name="pdfkit-margin-bottom" content="10mm">
 <html dir="{{ layout_direction }}" lang="{{ lang }}">
 <style>
     body {
@@ -38,9 +39,11 @@
 
 <!--Company Details-->
 {% if letter_head %}
-<div>
-    {{ letter_head.content }}
+<div id="header-html" class="hidden-pdf">
+
+{{ letter_head.content }}
 </div>
+<hr>
 {% else %}
 {% if company_defaults %}
 <table class="header-details" style="border:none;">
