@@ -1440,6 +1440,81 @@ def get_statement_generation_history(from_date=None, to_date=None, party_name=No
 # WHATSAPP FUNCTIONS
 # ================================
 
+def _get_current_whatsapp_status(log_doc):
+    status = log_doc.whatsapp_status or ""
+    if log_doc.whatsapp_message_id:
+        status = frappe.db.get_value("WhatsApp Message Log", log_doc.whatsapp_message_id, "status") or status
+    return status
+
+
+def _is_whatsapp_already_sent(log_doc):
+    status = _get_current_whatsapp_status(log_doc)
+    if status in ("Sent", "Delivered", "Read"):
+        return True
+    if log_doc.whatsapp_sent and status and status != "Failed":
+        return True
+    return False
+
+
+def _is_whatsapp_job_active(history_id):
+    if not history_id:
+        return False
+    row = frappe.db.get_value(
+        "Statement Generation History",
+        history_id,
+        ["whatsapp_job_id", "whatsapp_job_name"],
+        as_dict=True,
+    )
+    if not row:
+        return False
+    status_info = get_whatsapp_job_status(row.get("whatsapp_job_id"), row.get("whatsapp_job_name"))
+    status = (status_info or {}).get("status")
+    if not status:
+        return False
+    active_statuses = {"queued", "started", "running", "deferred", "scheduled", "stopped"}
+    return status in active_statuses
+
+
+def _reset_queued_whatsapp_after_cancel(history_id):
+    if not history_id:
+        return
+    try:
+        # Reset PDF logs that were only marked Queued by bulk job
+        log_ids = frappe.db.get_all(
+            "Statement Generation History Item",
+            filters={"parent": history_id, "whatsapp_status": "Queued"},
+            pluck="pdf_generator_log",
+        )
+        if log_ids:
+            frappe.db.sql(
+                """
+                UPDATE `tabPDF Generator Log`
+                SET whatsapp_status = 'Not Created',
+                    error_message = ''
+                WHERE name IN %(ids)s
+                  AND ifnull(whatsapp_message_id, '') = ''
+                  AND ifnull(whatsapp_sent, 0) = 0
+                  AND ifnull(whatsapp_status, '') = 'Queued'
+                """,
+                {"ids": tuple(log_ids)},
+            )
+            frappe.db.sql(
+                """
+                UPDATE `tabStatement Generation History Item`
+                SET whatsapp_status = 'Not Created'
+                WHERE parent = %(parent)s
+                  AND ifnull(whatsapp_message_id, '') = ''
+                  AND ifnull(whatsapp_status, '') = 'Queued'
+                """,
+                {"parent": history_id},
+            )
+        frappe.db.commit()
+    except Exception as e:
+        frappe.log_error(
+            message=f"Failed to reset queued WhatsApp statuses for {history_id}: {str(e)}",
+            title="WhatsApp Queue",
+        )
+
 @frappe.whitelist()
 def send_whatsapp_for_party(log_id):
     """UPDATED - Send WhatsApp message for a specific party with history updates"""
@@ -1449,7 +1524,7 @@ def send_whatsapp_for_party(log_id):
         if log_doc.status != "Completed" or not log_doc.pdf_file:
             return {"error": "PDF not ready for this party"}
 
-        if log_doc.whatsapp_sent or log_doc.whatsapp_status in ("Sent", "Delivered"):
+        if _is_whatsapp_already_sent(log_doc):
             return {"error": "WhatsApp message already sent for this party"}
 
         
@@ -2048,9 +2123,13 @@ def queue_whatsapp_for_party(log_id):
         log_doc = frappe.get_doc("PDF Generator Log", log_id)
         if log_doc.status != "Completed" or not log_doc.pdf_file:
             return {"error": "PDF not ready for this party"}
-        if log_doc.whatsapp_sent or log_doc.whatsapp_status in ("Sent", "Delivered"):
+        if getattr(log_doc, 'statement_generation_history', None):
+            if _is_whatsapp_job_active(log_doc.statement_generation_history):
+                return {"error": "WhatsApp queue is still running for this history"}
+        if _is_whatsapp_already_sent(log_doc):
             return {"error": "WhatsApp message already sent for this party"}
-        if log_doc.whatsapp_status in (None, "", "Not Created", "Failed"):
+        current_status = _get_current_whatsapp_status(log_doc)
+        if current_status in (None, "", "Not Created", "Failed"):
             log_doc.whatsapp_status = "Queued"
             log_doc.error_message = ""
             log_doc.save(ignore_permissions=True)
@@ -2132,6 +2211,8 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
         ids = []
 
         if history_id:
+            if _is_whatsapp_job_active(history_id):
+                return {"error": "WhatsApp queue is still running for this history"}
             # Get logs from history details (child table holds pdf_generator_log)
             items = frappe.get_all(
                 "Statement Generation History Item",
@@ -2323,6 +2404,35 @@ def cancel_whatsapp_job(job_id=None, job_name=None):
             frappe.db.set_value("RQ Job", row_name, "status", "cancelled")
             frappe.db.set_value("RQ Job", resolved_job_id, "status", "cancelled")
             frappe.db.commit()
+        # If we can resolve a history record, reset queued items that never sent
+        history_id = None
+        if resolved_job_id:
+            history_id = frappe.db.get_value(
+                "Statement Generation History",
+                {"whatsapp_job_id": resolved_job_id},
+                "name",
+            )
+        if not history_id and job_name:
+            history_id = frappe.db.get_value(
+                "Statement Generation History",
+                {"whatsapp_job_name": job_name},
+                "name",
+            )
+        if not history_id and job_row and getattr(job_row, "name", None):
+            history_id = frappe.db.get_value(
+                "Statement Generation History",
+                {"whatsapp_job_name": job_row.name},
+                "name",
+            )
+        if history_id:
+            _reset_queued_whatsapp_after_cancel(history_id)
+            frappe.db.set_value(
+                "Statement Generation History",
+                history_id,
+                {"whatsapp_job_id": None, "whatsapp_job_name": None},
+            )
+            frappe.db.commit()
+
         return {
             "success": "WhatsApp queue cancelled",
             "job_id": resolved_job_id,

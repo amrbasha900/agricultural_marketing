@@ -333,6 +333,21 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         loadHistoryWhatsAppJob(historyId);
     }
 
+    function loadHistoryWhatsAppJob(historyId) {
+        if (!historyId) return;
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_history_whatsapp_job',
+            args: { history_id: historyId },
+            callback: function (r) {
+                if (r.message) {
+                    lastWhatsAppJobId = r.message.job_id || null;
+                    lastWhatsAppJobName = r.message.job_name || null;
+                    updateWhatsAppQueueControls();
+                }
+            }
+        });
+    }
+
     // Load PDF status (legacy support)
     function loadPDFStatus(filters) {
         frappe.call({
@@ -703,72 +718,9 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         return buttons;
     }
 
-    function setWhatsAppButtonsDisabled(disabled) {
-        $('#send-all-whatsapp').prop('disabled', disabled);
-        $('#retry-all-whatsapp').prop('disabled', disabled);
-    }
-
-    function ensureWhatsAppSessionConnected(callback) {
-        frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_whatsapp_session_status',
-            callback: function (r) {
-                const data = r.message || {};
-                if (!data.connected) {
-                    frappe.msgprint(__(data.message || 'WhatsApp session is not connected.'));
-                    return;
-                }
-                if (typeof callback === 'function') {
-                    callback();
-                }
-            }
-        });
-    }
-
-    function loadHistoryWhatsAppJob(historyId) {
-        if (!historyId) return;
-        frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_history_whatsapp_job',
-            args: { history_id: historyId },
-            callback: function (r) {
-                if (r.message) {
-                    lastWhatsAppJobId = r.message.job_id || null;
-                    lastWhatsAppJobName = r.message.job_name || null;
-                    updateWhatsAppQueueControls();
-                }
-            }
-        });
-    }
-
-    function updateWhatsAppQueueControls() {
-        const hasJob = Boolean(lastWhatsAppJobId || lastWhatsAppJobName);
-        $('#cancel-whatsapp-queue').prop('disabled', !hasJob);
-        if (!hasJob) {
-            whatsappJobStatus = null;
-            setWhatsAppButtonsDisabled(false);
-            return;
-        }
-        frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_whatsapp_job_status',
-            args: {
-                job_id: lastWhatsAppJobId,
-                job_name: lastWhatsAppJobName
-            },
-            callback: function (r) {
-                const status = r.message && r.message.status ? r.message.status : null;
-                whatsappJobStatus = status;
-                const isActive = status === 'queued' || status === 'started' || status === 'running';
-                setWhatsAppButtonsDisabled(isActive);
-                if (!isActive) {
-                    lastWhatsAppJobId = null;
-                    lastWhatsAppJobName = null;
-                    $('#cancel-whatsapp-queue').prop('disabled', true);
-                }
-            }
-        });
-    }
-
     // SECTION 6: Event handling and history functions
     function bindStatusEvents(historyId = null) {
+        updateWhatsAppQueueControls();
         $('#show-report-info').on('click', function () {
             showReportInfo();
         });
@@ -1464,6 +1416,27 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         });
     }
 
+    function setWhatsAppButtonsDisabled(disabled) {
+        $('#send-all-whatsapp').prop('disabled', disabled);
+        $('#retry-all-whatsapp').prop('disabled', disabled);
+    }
+
+    function ensureWhatsAppSessionConnected(callback) {
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_whatsapp_session_status',
+            callback: function (r) {
+                const data = r.message || {};
+                if (!data.connected) {
+                    frappe.msgprint(__(data.message || 'WhatsApp session is not connected.'));
+                    return;
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            }
+        });
+    }
+
     function setWhatsAppJobDetails(message) {
         lastWhatsAppJobId = message.job_id || null;
         lastWhatsAppJobName = message.job_name || null;
@@ -1473,11 +1446,34 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
     function updateWhatsAppQueueControls() {
         const hasJob = Boolean(lastWhatsAppJobId || lastWhatsAppJobName);
         $('#cancel-whatsapp-queue').prop('disabled', !hasJob);
+        if (!hasJob) {
+            whatsappJobStatus = null;
+            setWhatsAppButtonsDisabled(false);
+            return;
+        }
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_whatsapp_job_status',
+            args: {
+                job_id: lastWhatsAppJobId,
+                job_name: lastWhatsAppJobName
+            },
+            callback: function (r) {
+                const status = r.message && r.message.status ? r.message.status : null;
+                whatsappJobStatus = status;
+                const isActive = status === 'queued' || status === 'started' || status === 'running';
+                setWhatsAppButtonsDisabled(isActive);
+                if (!isActive) {
+                    lastWhatsAppJobId = null;
+                    lastWhatsAppJobName = null;
+                    $('#cancel-whatsapp-queue').prop('disabled', true);
+                }
+            }
+        });
     }
 
     function cancelWhatsAppQueueJob() {
         frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.cancel_whatsapp_job',
+            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.cancel_whatsapp_job',
             args: {
                 job_id: lastWhatsAppJobId,
                 job_name: lastWhatsAppJobName
