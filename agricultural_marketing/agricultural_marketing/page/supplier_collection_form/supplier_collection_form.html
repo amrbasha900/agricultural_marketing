@@ -69,11 +69,11 @@
     <span style="margin-left: 60px; margin-right: 60px;">{{ _("From Date") }}: {{ filters.from_date }}</span>
     <span>{{ _("To Date") }}: {{ filters.to_date }}</span>
 </div>
-
-{% if data %}
 {% set total_qty = namespace(qty=0) %}
 {% set total_debit = namespace(debit=0) %}
 {% set total_credit = namespace(credit=0) %}
+{% if data %}
+
 <!--Summary Table-->
 {% for party in data %}
 {% set party_data = data[party] %}

@@ -14,6 +14,7 @@
      "status",
      "column_break_1",
      "pdf_file",
+     "whatsapp_status",
      "error_message",
      "created_by",
      "creation_time",
@@ -82,6 +83,13 @@
       "fieldtype": "Attach",
       "label": "PDF File"
      },
+    {
+     "default": "Not Created",
+     "fieldname": "whatsapp_status",
+     "fieldtype": "Select",
+     "label": "WhatsApp Status",
+     "options": "Not Created\nQueued\nSent\nDelivered\nFailed\nRead"
+    },
      {
       "fieldname": "error_message",
       "fieldtype": "Text",

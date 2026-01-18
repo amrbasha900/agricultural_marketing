@@ -1101,7 +1101,7 @@ def get_pdf_generation_status(filters=None, history_id=None):
                     "status": item.status,
                     "pdf_file": item.pdf_file,
                     "error_message": item.error_message,
-                    "whatsapp_sent": 1 if item.whatsapp_status and item.whatsapp_status != "Not Created" else 0,
+                    "whatsapp_sent": 1 if item.whatsapp_status in ("Sent", "Delivered", "Read") else 0,
                     "whatsapp_message_id": item.whatsapp_message_id,
                     "whatsapp_status": item.whatsapp_status or "Not Created"
                 }
@@ -1433,6 +1433,7 @@ def send_whatsapp_for_party(log_id):
 
         if log_doc.whatsapp_sent or log_doc.whatsapp_status in ("Sent", "Delivered"):
             return {"error": "WhatsApp message already sent for this party"}
+
         
         # Send WhatsApp message
         whatsapp_result = create_whatsapp_messages(
@@ -1446,6 +1447,7 @@ def send_whatsapp_for_party(log_id):
         if whatsapp_result and not whatsapp_result.get("error"):
             log_doc.whatsapp_sent = 1
             log_doc.whatsapp_message_id = whatsapp_result.get("log_name") or whatsapp_result
+            log_doc.whatsapp_status = whatsapp_result.get("status") or "Queued"
             log_doc.save(ignore_permissions=True)
             
             # Update history if linked
@@ -1462,7 +1464,22 @@ def send_whatsapp_for_party(log_id):
             frappe.db.commit()
             return {"success": "WhatsApp message sent successfully"}
         else:
-            return {"error": whatsapp_result.get("error", "Failed to send WhatsApp message")}
+            error_message = whatsapp_result.get("error", "Failed to send WhatsApp message") if whatsapp_result else "Failed to send WhatsApp message"
+            log_doc.whatsapp_sent = 0
+            log_doc.whatsapp_status = "Failed"
+            log_doc.error_message = error_message
+            log_doc.save(ignore_permissions=True)
+            if hasattr(log_doc, 'statement_generation_history') and log_doc.statement_generation_history:
+                update_history_item_status(
+                    log_doc.statement_generation_history,
+                    log_id,
+                    log_doc.status,
+                    error_message=error_message,
+                    whatsapp_status="Failed",
+                )
+                update_history_summary_counts(log_doc.statement_generation_history)
+            frappe.db.commit()
+            return {"error": error_message}
             
     except Exception as e:
         return {"error": str(e)}
@@ -1502,6 +1519,11 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
         if not whatsapp_number:
             return {"error": f"WhatsApp number not found for {party_name}"}
 
+        normalized_number = "".join(ch for ch in str(whatsapp_number) if ch.isdigit())
+        recipient_number = normalized_number or str(whatsapp_number).strip()
+        if len(recipient_number) <= 5:
+            return {"error": "Invalid WhatsApp number. It must be more than 5 digits."}
+
         default_session = frappe.db.get_single_value("Agriculture Settings", "whatsapp_session")
         session_name = default_session or frappe.db.get_value(
             "WhatsApp Session",
@@ -1516,7 +1538,7 @@ def create_whatsapp_messages(party_type=None, party_name=None, pdf_url=None, ref
 
         log_name = _wa_send(
             session_name=session_name,
-            recipient=whatsapp_number,
+            recipient=recipient_number,
             message_type="Document",
             message=whatsapp_message or "Please find your statement attached.",
             attachment_url=pdf_url,
@@ -1988,6 +2010,10 @@ def queue_whatsapp_for_party(log_id):
             return {"error": "PDF not ready for this party"}
         if log_doc.whatsapp_sent or log_doc.whatsapp_status in ("Sent", "Delivered"):
             return {"error": "WhatsApp message already sent for this party"}
+        if log_doc.whatsapp_status in (None, "", "Not Created", "Failed"):
+            log_doc.whatsapp_status = "Queued"
+            log_doc.error_message = ""
+            log_doc.save(ignore_permissions=True)
 
         # Mark history child whatsapp_status as Queued immediately (if linked)
         if hasattr(log_doc, 'statement_generation_history') and log_doc.statement_generation_history:
@@ -2114,6 +2140,28 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
                     and log.whatsapp_status in eligible_statuses
                 ]
         
+        if ids:
+            frappe.db.sql(
+                """
+                UPDATE `tabPDF Generator Log`
+                SET whatsapp_status = 'Queued',
+                    whatsapp_sent = 0,
+                    error_message = ''
+                WHERE name IN %(ids)s
+                """,
+                {"ids": tuple(ids)},
+            )
+            if history_id:
+                for log_id in ids:
+                    update_history_item_status_safe(
+                        history_id,
+                        log_id,
+                        "Completed",
+                        whatsapp_status="Queued",
+                        error_message="",
+                    )
+            frappe.db.commit()
+
         # Process in one background job with delay between messages (>=4s)
         delay_cfg = frappe.db.get_single_value("Agriculture Settings", "delay_between_messages_seconds") or 4
         try:
@@ -2135,6 +2183,13 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
         )
         job_id = job.get_id() if hasattr(job, "get_id") else getattr(job, "id", job)
         job_id = job.id if hasattr(job, "id") else job
+        if history_id:
+            frappe.db.set_value(
+                "Statement Generation History",
+                history_id,
+                {"whatsapp_job_id": job_id, "whatsapp_job_name": job_name},
+            )
+            frappe.db.commit()
         return {
             "success": f"Queued {len(ids)} WhatsApp messages (rate-limited every {delay_seconds}s)",
             "queued": len(ids),
@@ -2150,20 +2205,23 @@ def queue_all_whatsapp(history_id=None, log_ids=None, retry_failed: int = 0):
 def cancel_whatsapp_job(job_id=None, job_name=None):
     """Cancel a queued WhatsApp bulk job by RQ Job ID or job name."""
     from frappe.utils.background_jobs import get_job, get_queue
+    from frappe.utils.background_jobs import get_redis_conn
+    from frappe.core.doctype.rq_job.rq_job import for_current_site
+    from rq.command import send_stop_job_command
+    from rq.exceptions import InvalidJobOperation
+    from rq.queue import Queue
+    from rq.registry import StartedJobRegistry
+
 
     try:
+        rq_table_exists = frappe.db.table_exists("RQ Job")
         resolved_job_id = job_id
         job_row = None
-    from frappe.utils.background_jobs import get_job
-
-    try:
-        resolved_job_id = job_id
-        if not resolved_job_id and job_name:
+        if not resolved_job_id and job_name and rq_table_exists:
             job_rows = frappe.get_all(
                 "RQ Job",
                 filters={"job_name": job_name},
                 fields=["name", "job_id", "status", "queue"],
-                fields=["name", "status"],
                 order_by="creation desc",
                 limit=1,
             )
@@ -2171,54 +2229,157 @@ def cancel_whatsapp_job(job_id=None, job_name=None):
                 return {"error": "WhatsApp queue job not found"}
             job_row = job_rows[0]
             resolved_job_id = job_row.job_id or job_row.name
-            resolved_job_id = job_rows[0].name
 
         if not resolved_job_id:
             return {"error": "No job id provided"}
 
-        status = frappe.db.get_value("RQ Job", resolved_job_id, "status")
-        if not status and job_name and not job_row:
-            job_row = frappe.get_all(
+        job = get_job(resolved_job_id)
+        if not job and "::" in resolved_job_id:
+            job = get_job(resolved_job_id.split("::", 1)[1])
+
+        if not job and job_row and getattr(job_row, "queue", None):
+            queue = get_queue(job_row.queue)
+            job = queue.fetch_job(resolved_job_id)
+            if not job and "::" in resolved_job_id:
+                job = queue.fetch_job(resolved_job_id.split("::", 1)[1])
+
+        if not job:
+            return {"error": "WhatsApp queue job not found"}
+
+        status = job.get_status()
+        if status in ("finished", "failed", "cancelled", "canceled"):
+            return {"error": f"Job already {status}"}
+
+        force_stopped = False
+        target_job_id = resolved_job_id
+        if job_row and getattr(job_row, "job_id", None):
+            target_job_id = job_row.job_id
+        if job and getattr(job, "id", None):
+            target_job_id = job.id
+        registry_removed = False
+        if status == "started":
+            frappe.only_for("System Manager")
+            if job and not for_current_site(job):
+                raise frappe.PermissionError
+            try:
+                send_stop_job_command(connection=get_redis_conn(), job_id=target_job_id)
+                force_stopped = True
+            except InvalidJobOperation:
+                force_stopped = False
+            if job and force_stopped:
+                queue_name = (job.origin or (job_row.queue if job_row else None) or "default")
+                queue = Queue(queue_name, connection=get_redis_conn())
+                started_registry = StartedJobRegistry(queue=queue)
+                if target_job_id in started_registry.get_job_ids():
+                    started_registry.remove(job, delete_job=False)
+                    registry_removed = True
+
+        if status == "queued" and not force_stopped:
+            job.cancel()
+        row_name = resolved_job_id
+        if job_row and job_row.name:
+            row_name = job_row.name
+        if rq_table_exists and status == "queued":
+            frappe.db.set_value("RQ Job", row_name, "status", "cancelled")
+            frappe.db.set_value("RQ Job", resolved_job_id, "status", "cancelled")
+            frappe.db.commit()
+        return {
+            "success": "WhatsApp queue cancelled",
+            "job_id": resolved_job_id,
+            "target_job_id": target_job_id,
+            "force_stop_sent": force_stopped,
+            "removed_from_started_registry": registry_removed,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@frappe.whitelist()
+def get_whatsapp_job_status(job_id=None, job_name=None):
+    """Return current RQ status for a WhatsApp queue job."""
+    from frappe.utils.background_jobs import get_job
+
+    try:
+        rq_table_exists = frappe.db.table_exists("RQ Job")
+        resolved_job_id = job_id
+        job_row = None
+
+        if not resolved_job_id and job_name and rq_table_exists:
+            job_rows = frappe.get_all(
                 "RQ Job",
                 filters={"job_name": job_name},
-                fields=["name", "job_id", "status", "queue"],
+                fields=["name", "job_id", "status"],
                 order_by="creation desc",
                 limit=1,
             )
-            if job_row:
-                job_row = job_row[0]
-                status = job_row.status
+            if job_rows:
+                job_row = job_rows[0]
                 resolved_job_id = job_row.job_id or job_row.name
 
-        if status in ("finished", "failed", "cancelled"):
-            return {"error": f"Job already {status}"}
+        if not resolved_job_id:
+            return {"status": "not_found"}
 
         job = get_job(resolved_job_id)
         if not job and "::" in resolved_job_id:
             job = get_job(resolved_job_id.split("::", 1)[1])
 
         if not job:
-            queue_name = job_row.queue if job_row else None
-            if queue_name:
-                queue = get_queue(queue_name)
-                job = queue.fetch_job(resolved_job_id)
-                if not job and "::" in resolved_job_id:
-                    job = queue.fetch_job(resolved_job_id.split("::", 1)[1])
+            return {"status": "not_found"}
 
-        if not job:
-            return {"error": "WhatsApp queue job not found"}
-
-        job.cancel()
-        row_name = resolved_job_id
-        if job_row and job_row.name:
-            row_name = job_row.name
-        frappe.db.set_value("RQ Job", row_name, "status", "cancelled")
-        frappe.db.set_value("RQ Job", resolved_job_id, "status", "cancelled")
-        frappe.db.commit()
-        return {"success": "WhatsApp queue cancelled", "job_id": resolved_job_id}
+        status = job.get_status()
+        return {
+            "status": status,
+            "job_id": job.id,
+            "job_name": job_row.name if job_row else None,
+        }
     except Exception as e:
         return {"error": str(e)}
 
+
+@frappe.whitelist()
+def get_whatsapp_session_status():
+    """Return whether WhatsApp session is connected and usable."""
+    try:
+        default_session = frappe.db.get_single_value("Agriculture Settings", "whatsapp_session")
+        session_name = default_session or frappe.db.get_value(
+            "WhatsApp Session",
+            {"status_text": ["in", ["CONNECTED", "Connected", "READY", "Ready"]]},
+            "name",
+        ) or frappe.db.get_value("WhatsApp Session", {}, "name")
+
+        if not session_name:
+            return {"connected": False, "message": "No WhatsApp Session configured"}
+
+        status_text = frappe.db.get_value("WhatsApp Session", session_name, "status_text")
+        is_connected = (status_text or "").upper() in ("CONNECTED", "READY")
+        return {
+            "connected": bool(is_connected),
+            "session_name": session_name,
+            "status": status_text,
+            "message": None if is_connected else "WhatsApp session is not connected",
+        }
+    except Exception as e:
+        return {"connected": False, "message": str(e)}
+
+
+@frappe.whitelist()
+def get_history_whatsapp_job(history_id):
+    """Return stored WhatsApp job info for a history record."""
+    try:
+        if not history_id:
+            return {"job_id": None, "job_name": None}
+        row = frappe.db.get_value(
+            "Statement Generation History",
+            history_id,
+            ["whatsapp_job_id", "whatsapp_job_name"],
+            as_dict=True,
+        )
+        return {
+            "job_id": row.get("whatsapp_job_id") if row else None,
+            "job_name": row.get("whatsapp_job_name") if row else None,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 @frappe.whitelist()
 def retry_all_failed_pdfs(history_id):
     """

@@ -83,6 +83,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
     let refreshInterval = null;
     let lastWhatsAppJobId = null;
     let lastWhatsAppJobName = null;
+    let whatsappJobStatus = null;
 
     // SECTION 2: Field definitions with saved filters
     function getSavedFilters() {
@@ -325,9 +326,11 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
             callback: function (r) {
                 if (r.message) {
                     displayPDFStatus(r.message, historyId);
+                    updateWhatsAppQueueControls();
                 }
             },
         });
+        loadHistoryWhatsAppJob(historyId);
     }
 
     // Load PDF status (legacy support)
@@ -340,6 +343,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
             callback: function (r) {
                 if (r.message) {
                     displayPDFStatus(r.message);
+                    updateWhatsAppQueueControls();
                 }
             },
         });
@@ -645,19 +649,27 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
     }
 
     function getWhatsAppIcon(sent, whatsapp_status) {
-        if (!sent || whatsapp_status === 'Not Created') {
+        const status = (whatsapp_status || 'Not Created').toString();
+        const sentStatuses = ['Sent', 'Delivered', 'Read'];
+        if (!sentStatuses.includes(status)) {
+            if (status === 'Failed') {
+                return '<i class="fa fa-times-circle text-danger" title="WhatsApp Failed"></i>';
+            }
+            if (status === 'Queued') {
+                return '<i class="fa fa-clock-o text-warning" title="WhatsApp Queued"></i>';
+            }
             return '<i class="fa fa-times-circle text-muted" title="WhatsApp Not Created"></i>';
         }
 
-        switch (whatsapp_status) {
+        switch (status) {
             case 'Queued':
                 return '<i class="fa fa-clock-o text-warning" title="WhatsApp Queued"></i>';
             case 'Sent':
                 return '<i class="fa fa-check text-primary" title="WhatsApp Sent"></i>';
             case 'Delivered':
                 return '<i class="fa fa-check-circle text-success" title="WhatsApp Delivered"></i>';
-            case 'Failed':
-                return '<i class="fa fa-times-circle text-danger" title="WhatsApp Failed"></i>';
+            case 'Read':
+                return '<i class="fa fa-check-circle text-success" title="WhatsApp Read"></i>';
             default:
                 return '<i class="fa fa-question-circle text-muted" title="WhatsApp Status Unknown"></i>';
         }
@@ -668,9 +680,14 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
 
         if (log.status === 'Completed' && log.pdf_file) {
             buttons += `<button class="btn btn-sm sf-action-btn btn-info download-pdf" data-url="${log.pdf_file}">${__('Download')}</button> `;
-            const isSent = log.whatsapp_status === 'Sent' || log.whatsapp_status === 'Delivered' || log.whatsapp_sent;
-            if (!isSent && (!log.whatsapp_status || log.whatsapp_status === 'Not Created' || log.whatsapp_status === 'Failed')) {
+            const sentStatuses = ['Sent', 'Delivered', 'Read'];
+            const isSent = sentStatuses.includes(log.whatsapp_status);
+            if (!isSent && (!log.whatsapp_status || log.whatsapp_status === 'Not Created')) {
                 buttons += `<button class="btn btn-sm btn-primary send-whatsapp" data-log-id="${log.name}">${__('Send WhatsApp')}</button>`;
+            } else if (log.whatsapp_status === 'Failed') {
+                buttons += `<button class="btn btn-sm btn-warning send-whatsapp" data-log-id="${log.name}">${__('Retry WhatsApp')}</button>`;
+                const errorText = log.error_message ? `${log.error_message}` : __('WhatsApp failed');
+                buttons += `<small class="text-danger" style="margin-left:6px">${errorText}</small>`;
             } else if (isSent) {
                 buttons += `<span class="text-success">${__('WhatsApp Sent')}</span>`;
             }
@@ -686,9 +703,72 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         return buttons;
     }
 
+    function setWhatsAppButtonsDisabled(disabled) {
+        $('#send-all-whatsapp').prop('disabled', disabled);
+        $('#retry-all-whatsapp').prop('disabled', disabled);
+    }
+
+    function ensureWhatsAppSessionConnected(callback) {
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_whatsapp_session_status',
+            callback: function (r) {
+                const data = r.message || {};
+                if (!data.connected) {
+                    frappe.msgprint(__(data.message || 'WhatsApp session is not connected.'));
+                    return;
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            }
+        });
+    }
+
+    function loadHistoryWhatsAppJob(historyId) {
+        if (!historyId) return;
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_history_whatsapp_job',
+            args: { history_id: historyId },
+            callback: function (r) {
+                if (r.message) {
+                    lastWhatsAppJobId = r.message.job_id || null;
+                    lastWhatsAppJobName = r.message.job_name || null;
+                    updateWhatsAppQueueControls();
+                }
+            }
+        });
+    }
+
+    function updateWhatsAppQueueControls() {
+        const hasJob = Boolean(lastWhatsAppJobId || lastWhatsAppJobName);
+        $('#cancel-whatsapp-queue').prop('disabled', !hasJob);
+        if (!hasJob) {
+            whatsappJobStatus = null;
+            setWhatsAppButtonsDisabled(false);
+            return;
+        }
+        frappe.call({
+            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_whatsapp_job_status',
+            args: {
+                job_id: lastWhatsAppJobId,
+                job_name: lastWhatsAppJobName
+            },
+            callback: function (r) {
+                const status = r.message && r.message.status ? r.message.status : null;
+                whatsappJobStatus = status;
+                const isActive = status === 'queued' || status === 'started' || status === 'running';
+                setWhatsAppButtonsDisabled(isActive);
+                if (!isActive) {
+                    lastWhatsAppJobId = null;
+                    lastWhatsAppJobName = null;
+                    $('#cancel-whatsapp-queue').prop('disabled', true);
+                }
+            }
+        });
+    }
+
     // SECTION 6: Event handling and history functions
     function bindStatusEvents(historyId = null) {
-        updateWhatsAppQueueControls();
         $('#show-report-info').on('click', function () {
             showReportInfo();
         });
@@ -720,12 +800,18 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         });
 
         $('#send-all-whatsapp').on('click', function () {
+            if ($('#send-all-whatsapp').prop('disabled')) {
+                frappe.msgprint(__('WhatsApp queue is running. Please wait until it finishes.'));
+                return;
+            }
             if (historyId) {
-                frappe.confirm(
-                    __('Are you sure you want to send WhatsApp messages to all completed suppliers in this generation?'),
-                    () => sendAllWhatsAppByHistory(historyId),
-                    () => frappe.msgprint(__('Cancelled'))
-                );
+                ensureWhatsAppSessionConnected(() => {
+                    frappe.confirm(
+                        __('Are you sure you want to send WhatsApp messages to all completed suppliers in this generation?'),
+                        () => sendAllWhatsAppByHistory(historyId),
+                        () => frappe.msgprint(__('Cancelled'))
+                    );
+                });
             } else {
                 let selectedIds = $('.row-checkbox:checked').map(function () {
                     return this.value;
@@ -736,11 +822,13 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                     return;
                 }
 
-                frappe.confirm(
-                    __(`Are you sure you want to send WhatsApp messages to ${selectedIds.length} selected suppliers?`),
-                    () => sendBulkWhatsApp(selectedIds),
-                    () => frappe.msgprint(__('Cancelled'))
-                );
+                ensureWhatsAppSessionConnected(() => {
+                    frappe.confirm(
+                        __(`Are you sure you want to send WhatsApp messages to ${selectedIds.length} selected suppliers?`),
+                        () => sendBulkWhatsApp(selectedIds),
+                        () => frappe.msgprint(__('Cancelled'))
+                    );
+                });
             }
         });
 
@@ -874,31 +962,37 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         }
 
         $('#retry-all-whatsapp').on('click', function () {
+            if ($('#retry-all-whatsapp').prop('disabled')) {
+                frappe.msgprint(__('WhatsApp queue is running. Please wait until it finishes.'));
+                return;
+            }
             if (!historyId && !currentHistoryId) {
                 frappe.msgprint(__('No history loaded'));
                 return;
             }
             const hid = historyId || currentHistoryId;
-            frappe.confirm(
-                __('Queue WhatsApp for all completed items with Not Created/Failed status?'),
-                () => {
-                    frappe.call({
-                        method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.queue_all_whatsapp',
-                        args: { history_id: hid, retry_failed: 1 },
-                        callback: function (r) {
-                            if (r.message && r.message.success) {
-                                frappe.show_alert({ message: r.message.success, indicator: 'green' });
-                                setWhatsAppJobDetails(r.message);
-                                loadPDFStatusByHistory(hid);
-                                startAutoRefresh();
-                            } else {
-                                frappe.msgprint(__('Failed to queue WhatsApp: ') + (r.message && r.message.error ? r.message.error : 'Unknown error'));
+            ensureWhatsAppSessionConnected(() => {
+                frappe.confirm(
+                    __('Queue WhatsApp for all completed items with Not Created/Failed status?'),
+                    () => {
+                        frappe.call({
+                            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.queue_all_whatsapp',
+                            args: { history_id: hid, retry_failed: 1 },
+                            callback: function (r) {
+                                if (r.message && r.message.success) {
+                                    frappe.show_alert({ message: r.message.success, indicator: 'green' });
+                                    setWhatsAppJobDetails(r.message);
+                                    loadPDFStatusByHistory(hid);
+                                    startAutoRefresh();
+                                } else {
+                                    frappe.msgprint(__('Failed to queue WhatsApp: ') + (r.message && r.message.error ? r.message.error : 'Unknown error'));
+                                }
                             }
-                        }
-                    });
-                },
-                () => { }
-            );
+                        });
+                    },
+                    () => { }
+                );
+            });
         });
 
         $('#cancel-whatsapp-queue').on('click', function () {
@@ -1207,7 +1301,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                     <td><small class="text-muted">${errorMessage}</small></td>
                     <td>
                         ${log.pdf_file ? `<button class="btn btn-sm btn-info" onclick="window.open('${log.pdf_file}', '_blank')">${__('Download')}</button>` : ''}
-                        ${log.status === 'Completed' && log.whatsapp_status === 'Not Created' ? `<button class="btn btn-sm btn-primary send-whatsapp-detail" data-log-id="${log.pdf_generator_log}">${__('Send WhatsApp')}</button>` : ''}
+                        ${log.status === 'Completed' && (log.whatsapp_status === 'Not Created' || log.whatsapp_status === 'Failed') ? `<button class="btn btn-sm btn-primary send-whatsapp-detail" data-log-id="${log.pdf_generator_log}">${__('Send WhatsApp')}</button>` : ''}
                     </td>
                 </tr>
             `;

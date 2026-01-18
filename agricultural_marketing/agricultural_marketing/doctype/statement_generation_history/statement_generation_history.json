@@ -28,6 +28,8 @@
   "whatsapp_sent_count",
   "summary_section",
   "description",
+  "whatsapp_job_id",
+  "whatsapp_job_name",
   "pdf_logs_section",
   "pdf_generator_logs"
  ],
@@ -166,6 +168,16 @@
    "fieldname": "description",
    "fieldtype": "Text",
    "label": "Description"
+  },
+  {
+   "fieldname": "whatsapp_job_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp Job ID"
+  },
+  {
+   "fieldname": "whatsapp_job_name",
+   "fieldtype": "Data",
+   "label": "WhatsApp Job Name"
   },
   {
    "fieldname": "pdf_logs_section",
