@@ -1468,6 +1468,123 @@ def generate_single_supplier_pdf(log_id, supplier_name=None, history_id=None):
         except Exception as save_error:
             frappe.log_error(message=f"Failed to save final status for {log_id}: {str(save_error)[:200]}", title="PDF Generation")
 
+@frappe.whitelist()
+def retry_failed_pdf(log_id):
+    """Retry generating PDF for a failed supplier log entry."""
+    try:
+        log_doc = frappe.get_doc("PDF Generator Log", log_id)
+
+        if log_doc.status not in ["Failed"]:
+            return {"error": "Can only retry failed jobs"}
+
+        # Reset status
+        log_doc.status = "Queued"
+        log_doc.error_message = ""
+        log_doc.save(ignore_permissions=True)
+
+        # Update history item safely
+        if getattr(log_doc, "statement_generation_history", None):
+            update_history_item_status_safe(log_doc.statement_generation_history, log_id, "Queued")
+
+        # Queue new background job with supplier-specific generator
+        safe_supplier_name = frappe.scrub(log_doc.party_name).replace("_", "-")[:30]
+        frappe.enqueue(
+            method=generate_single_supplier_pdf,
+            log_id=log_id,
+            supplier_name=log_doc.party_name,
+            history_id=getattr(log_doc, "statement_generation_history", None),
+            job_name=f"SupplierPDF-Retry-{safe_supplier_name}",
+            timeout=300,
+            is_async=True,
+        )
+
+        frappe.db.commit()
+        return {"success": "Supplier PDF generation retry queued"}
+
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
+@frappe.whitelist()
+def retry_all_failed_pdfs(history_id):
+    """
+    Retry all failed PDF Generator Logs for a given Statement Generation History
+    using supplier-specific PDF generation.
+    """
+    try:
+        if not history_id:
+            return {"error": "No history_id provided"}
+        history_doc = frappe.get_doc("Statement Generation History", history_id)
+        failed_logs = [item.pdf_generator_log for item in history_doc.pdf_generator_logs if item.status == "Failed"]
+        retried = 0
+        skipped = 0
+
+        for log_id in failed_logs:
+            try:
+                log_doc = frappe.get_doc("PDF Generator Log", log_id)
+                if log_doc.status == "Failed":
+                    # Reset status and error message
+                    log_doc.status = "Queued"
+                    log_doc.error_message = ""
+                    log_doc.save(ignore_permissions=True)
+                    # Update history item safely
+                    update_history_item_status_safe(history_id, log_id, "Queued")
+                    # Queue new background job with supplier-specific generator
+                    safe_supplier_name = frappe.scrub(log_doc.party_name).replace("_", "-")[:30]
+                    frappe.enqueue(
+                        method=generate_single_supplier_pdf,
+                        log_id=log_id,
+                        supplier_name=log_doc.party_name,
+                        history_id=history_id,
+                        job_name=f"SupplierPDF-RetryAll-{safe_supplier_name}",
+                        timeout=300,
+                        is_async=True,
+                    )
+                    retried += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                frappe.log_error(message=f"Supplier retry all failed: Could not process log {log_id}: {str(e)[:200]}", title="Supplier PDF Retry All Failed")
+                skipped += 1
+
+        update_history_summary_counts_safe(history_id)
+        frappe.db.commit()
+        return {"success": f"Retried {retried} failed jobs, skipped {skipped}", "retried": retried, "skipped": skipped}
+    except Exception as e:
+        frappe.log_error(message=f"Supplier retry all failed error: {str(e)[:200]}", title="Supplier PDF Retry All Failed")
+        return {"error": str(e)[:200]}
+
+
+@frappe.whitelist()
+def retry_all_queued_and_failed_pdf_jobs_for_history(history_id):
+    """
+    Retry all queued and failed PDF Generator Logs for a given Statement Generation History
+    using supplier-specific PDF generation.
+    """
+    retried = 0
+    skipped = 0
+    logs = frappe.get_all(
+        "PDF Generator Log",
+        filters={"statement_generation_history": history_id, "status": ["in", ["Queued", "Failed"]]},
+        fields=["name", "party_name", "statement_generation_history"],
+    )
+    for log in logs:
+        try:
+            frappe.enqueue(
+                method=generate_single_supplier_pdf,
+                log_id=log["name"],
+                supplier_name=log["party_name"],
+                history_id=log["statement_generation_history"],
+                job_name=f"SupplierPDF-Manual-Retry-{log['name']}",
+                timeout=300,
+                is_async=True,
+            )
+            retried += 1
+        except Exception as e:
+            frappe.logger("pdf_generation").error(f"Failed to re-queue supplier log {log['name']}: {e}")
+            skipped += 1
+    return {"success": f"Re-queued {retried} jobs, skipped {skipped}", "retried": retried, "skipped": skipped}
+
 def update_history_item_status_safe(history_id, log_id, status, pdf_file=None, error_message=None, whatsapp_status=None, whatsapp_message_id=None):
     """Update a specific child row via direct DB to avoid parent save conflicts"""
     max_retries = 3

@@ -848,7 +848,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                 __('Are you sure you want to retry PDF generation for this supplier?'),
                 () => {
                     frappe.call({
-                        method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.retry_failed_pdf',
+                        method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.retry_failed_pdf',
                         args: { log_id: logId },
                         callback: function (r) {
                             if (r.message.success) {
@@ -873,7 +873,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                     __('Are you sure you want to retry all failed jobs?'),
                     () => {
                         frappe.call({
-                            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.retry_all_failed_pdfs',
+                            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.retry_all_failed_pdfs',
                             args: { history_id: historyId },
                             callback: function (r) {
                                 if (r.message && r.message.success) {
@@ -895,7 +895,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                     __('Are you sure you want to retry all queued and failed jobs?'),
                     () => {
                         frappe.call({
-                            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.retry_all_queued_and_failed_pdf_jobs_for_history',
+                            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.retry_all_queued_and_failed_pdf_jobs_for_history',
                             args: { history_id: historyId },
                             callback: function (r) {
                                 if (r.message && r.message.success) {
