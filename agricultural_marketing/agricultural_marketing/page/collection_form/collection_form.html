@@ -150,7 +150,10 @@
     <div class="letter-head-footer">
         <div class="row">
             <div class="col-xs-4" style="text-align: left;font-size: 12px;">وقت الطباعة : {{frappe.utils.format_datetime(frappe.utils.now(), "dd-mm-yyyy HH:mm:ss")}}</div>
-            <div class="col-xs-8" style="text-align: right;font-size: 12px;"> {% if frappe.db.get_single_value("Agriculture Settings", "report_note") %}<u>{{frappe.db.get_single_value("Agriculture Settings", "report_note")}}</u>  {% endif %}  </div>
+            <div class="col-xs-4" style="text-align: center;direction:rtl;font-size: 12px;">
+                صفحة  <span class="page footer"></span> من  <span class="topage footer"></span> 
+            </div>
+            <div class="col-xs-4" style="text-align: right;font-size: 12px;"> {% if frappe.db.get_single_value("Agriculture Settings", "report_note") %}<u>{{frappe.db.get_single_value("Agriculture Settings", "report_note")}}</u>  {% endif %}  </div>
         </div>
     </div>
 </div>
