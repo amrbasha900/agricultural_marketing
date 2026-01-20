@@ -100,7 +100,9 @@ def get_html_format():
 
 def get_columns(filters):
     """Define the columns for the report"""
-    party_label = _("Customer Name") if filters.get("party_type") == "Customer" else _("Supplier Name")
+    party_label = _("Customer") if filters.get("party_type") == "Customer" else _("Supplier")
+    party_name_field = "customer_name" if filters.get("party_type") == "Customer" else "supplier_name"
+    party_name_label = _("Customer Name") if filters.get("party_type") == "Customer" else _("Supplier Name")
     
     return [
         {
@@ -108,6 +110,12 @@ def get_columns(filters):
             "label": party_label,
             "fieldtype": "Link",
             "options": filters.get("party_type"),
+            "width": 200
+        },
+        {
+            "fieldname": party_name_field,
+            "label": party_name_label,
+            "fieldtype": "Data",
             "width": 200
         },
         {
@@ -152,10 +160,13 @@ def get_report_data(filters):
     """Get report data based on filters"""
     data = []
     parties = get_parties(filters)
+    party_name_map = get_party_name_map(filters, parties)
     
     for party in parties:
         party_data = {
             "party": party,
+            "customer_name": party_name_map.get(party) if filters.get("party_type") == "Customer" else None,
+            "supplier_name": party_name_map.get(party) if filters.get("party_type") == "Supplier" else None,
             "opening_balance": 0,
             "opening_debit": 0,
             "opening_credit": 0,
@@ -201,6 +212,20 @@ def get_report_data(filters):
             data.append(party_data)
     
     return data
+
+def get_party_name_map(filters, parties):
+    """Get display name map for customers/suppliers."""
+    party_type = filters.get("party_type")
+    if not parties:
+        return {}
+    
+    if party_type == "Customer":
+        rows = frappe.db.get_all("Customer", filters={"name": ["in", parties]}, fields=["name", "customer_name"])
+        return {row.name: row.customer_name for row in rows}
+    if party_type == "Supplier":
+        rows = frappe.db.get_all("Supplier", filters={"name": ["in", parties]}, fields=["name", "supplier_name"])
+        return {row.name: row.supplier_name for row in rows}
+    return {}
 
 def get_parties(filters):
     """Get list of parties based on filters"""
