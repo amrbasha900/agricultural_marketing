@@ -320,7 +320,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-08 16:06:27.892171",
+ "modified": "2026-02-08 20:20:36.940561",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",
@@ -344,5 +344,6 @@
  "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }
