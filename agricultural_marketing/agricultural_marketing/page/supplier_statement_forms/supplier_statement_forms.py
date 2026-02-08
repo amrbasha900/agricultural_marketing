@@ -66,6 +66,9 @@ def queue_pdf_generation(filters):
     log_entries = []
     #suppliers_with_data.append('0010891')
     for supplier in suppliers_with_data:
+        filters_for_log = dict(filters)
+        filters_for_log["party"] = supplier
+        filters_for_log["party_type"] = "Supplier"
         # Create new log entry
         log_entry = frappe.get_doc({
             "doctype": "PDF Generator Log",
@@ -77,7 +80,7 @@ def queue_pdf_generation(filters):
             "to_date": filters.get("to_date"),
             "status": "Queued",
             "created_by": frappe.session.user,
-            "filters_json": json.dumps(filters),
+            "filters_json": json.dumps(filters_for_log),
             "statement_generation_history": history_doc.name
         })
         log_entry.insert(ignore_permissions=True)
@@ -126,10 +129,39 @@ def queue_pdf_generation(filters):
 
 @frappe.whitelist()
 def get_pdf_generation_status(filters=None, history_id=None):
-    """Get PDF generation status using statement forms backend"""
+    """Get PDF generation status, scoped to supplier histories."""
+    if history_id:
+        return frappe.call(
+            "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_pdf_generation_status",
+            filters=filters,
+            history_id=history_id,
+        )
+
+    if isinstance(filters, str):
+        filters = json.loads(filters)
+    filters = filters or {}
+
+    conditions = {
+        "supplier_statement": 1,
+        "party_type": "Supplier",
+    }
+    for key in ("company", "party_group", "party", "from_date", "to_date"):
+        if filters.get(key):
+            conditions[key] = filters.get(key)
+
+    history = frappe.get_all(
+        "Statement Generation History",
+        filters=conditions,
+        fields=["name"],
+        order_by="generation_time desc",
+        limit=1,
+    )
+    if not history:
+        return []
+
     return frappe.call(
-        method='agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_pdf_generation_status',
-        args={'filters': filters, 'history_id': history_id}
+        "agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_pdf_generation_status",
+        history_id=history[0].name,
     )
 
 
@@ -1385,38 +1417,55 @@ def generate_supplier_pdf_for_statement_forms(filters, party_name):
     """Wrapper function for statement forms integration"""
     return generate_single_pdf(filters, party_name)
 
+def _read_supplier_html_template():
+    """Read the supplier_statement_forms.html template directly from disk.
+    This is intentionally separate from get_html_format() and any function in
+    statement_forms.py to guarantee the correct template is always used,
+    even when RQ workers process many jobs from different modules."""
+    template_file = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "supplier_statement_forms.html",
+    )
+    if not os.path.exists(template_file):
+        frappe.throw(f"Supplier statement template not found: {template_file}")
+    with open(template_file, "r") as f:
+        return f.read()
+
+
 def generate_single_supplier_pdf(log_id, supplier_name=None, history_id=None):
-    """Generate PDF for a single supplier using YOUR existing logic"""
+    """Generate PDF for a single supplier – fully self-contained.
+
+    All template reading, data fetching and PDF rendering is inlined here so
+    that there is zero chance of the RQ worker resolving a same-named function
+    from another module (e.g. statement_forms.generate_single_pdf) which would
+    use the wrong HTML template."""
     log_doc = None
     actual_supplier_name = supplier_name
-    
+
     try:
-        # Get the log document
+        # ── 1. Load the PDF Generator Log ──────────────────────────────
         try:
             log_doc = frappe.get_doc("PDF Generator Log", log_id)
         except frappe.DoesNotExistError:
             if history_id:
                 update_history_item_status_safe(history_id, log_id, "Failed", error_message="PDF log not found")
             return
-        
-        # Update status to processing
+
+        # ── 2. Mark as Processing ──────────────────────────────────────
         log_doc.status = "Processing"
         log_doc.save(ignore_permissions=True)
-        
         if history_id:
             update_history_item_status_safe(history_id, log_id, "Processing")
-        
         frappe.db.commit()
-        
-        # Use supplier name from log if not provided
+
+        # ── 3. Determine supplier name from the log (authoritative) ────
+        actual_supplier_name = log_doc.party_name or supplier_name
         if not actual_supplier_name:
-            actual_supplier_name = log_doc.party_name
-        
-        # Reconstruct filters for single supplier
+            raise ValueError("No supplier name available on log or argument")
+
+        # ── 4. Reconstruct filters from the log ───────────────────────
         try:
             filters = json.loads(log_doc.filters_json)
-            filters["party"] = actual_supplier_name
-            filters["party_type"] = "Supplier"  # Ensure it's Supplier
         except (json.JSONDecodeError, ValueError) as json_error:
             log_doc.status = "Failed"
             log_doc.error_message = f"Invalid filters JSON: {str(json_error)}"
@@ -1425,26 +1474,74 @@ def generate_single_supplier_pdf(log_id, supplier_name=None, history_id=None):
                 update_history_item_status_safe(history_id, log_id, "Failed", error_message=log_doc.error_message)
             frappe.db.commit()
             return
-        
-        # Generate PDF using YOUR existing generate_single_pdf logic
-        pdf_result = generate_single_pdf(filters, actual_supplier_name)
-        
-        if pdf_result.get("success"):
-            log_doc.status = "Completed"
-            log_doc.pdf_file = pdf_result["file_url"]
-            log_doc.completion_time = now()
-            if history_id:
-                update_history_item_status_safe(history_id, log_id, "Completed", pdf_file=pdf_result["file_url"])
-        else:
-            log_doc.status = "Failed"
-            log_doc.error_message = pdf_result.get("error", "Unknown error during PDF generation")
-            if history_id:
-                update_history_item_status_safe(history_id, log_id, "Failed", error_message=log_doc.error_message)
-            
+
+        # Force every critical field from the log itself – never trust
+        # the serialised filters alone.
+        filters["party"] = actual_supplier_name
+        filters["party_type"] = "Supplier"
+        filters["company"] = log_doc.company
+        filters["party_group"] = log_doc.party_group
+        filters["from_date"] = str(log_doc.from_date) if log_doc.from_date else filters.get("from_date")
+        filters["to_date"] = str(log_doc.to_date) if log_doc.to_date else filters.get("to_date")
+
+        # ── 5. Fetch data (uses THIS module's get_data) ───────────────
+        data = frappe._dict()
+        data = get_data(data, filters)
+        if not data or actual_supplier_name not in data:
+            raise ValueError(f"No data found for supplier: {actual_supplier_name}")
+
+        value = data[actual_supplier_name]
+
+        # ── 6. Read the SUPPLIER template directly from disk ───────────
+        html_format = _read_supplier_html_template()
+
+        # ── 7. Build context & render ──────────────────────────────────
+        default_letter_head = frappe.get_value("Company", filters.get("company"), "default_letter_head")
+        letter_head = frappe.get_doc("Letter Head", default_letter_head) if default_letter_head else None
+
+        party_summary = get_party_summary(
+            filters=filters,
+            party_type="Supplier",
+            party=actual_supplier_name,
+            party_data=value,
+        )
+        header_details = get_header_data(filters.get("party_group"), actual_supplier_name)
+        font_size = frappe.db.get_single_value("Agriculture Settings", "font_size") or 14
+
+        context = {
+            "letter_head": letter_head,
+            "header": header_details,
+            "summary": party_summary,
+            "items": value.get("items"),
+            "buying_items": value.get("buying_items"),
+            "payments": value.get("payments"),
+            "filters": filters,
+            "lang": frappe.local.lang,
+            "layout_direction": "rtl" if is_rtl() else "ltr",
+            "font_size": font_size,
+        }
+
+        html = frappe.render_template(html_format, context)
+        content = _get_pdf(html, {"orientation": "Portrait"})
+
+        file_name = "{0}-{1}.pdf".format(actual_supplier_name, str(random.randint(1000, 9999)))
+        file_doc = frappe.new_doc("File")
+        file_doc.update({"file_name": file_name, "is_private": 0, "content": content})
+        file_doc.save(ignore_permissions=True)
+
+        # ── 8. Mark Completed ──────────────────────────────────────────
+        log_doc.status = "Completed"
+        log_doc.pdf_file = file_doc.file_url
+        log_doc.completion_time = now()
+        if history_id:
+            update_history_item_status_safe(history_id, log_id, "Completed", pdf_file=file_doc.file_url)
+
     except Exception as e:
         error_msg = str(e)[:200]
-        frappe.log_error(message=f"Supplier PDF Generation failed for {log_id}: {error_msg}", title="PDF Generation")
-        
+        frappe.log_error(
+            message=f"Supplier PDF Generation failed for {log_id} ({actual_supplier_name}): {error_msg}",
+            title="Supplier PDF Generation",
+        )
         if log_doc:
             try:
                 log_doc.status = "Failed"
@@ -1452,21 +1549,24 @@ def generate_single_supplier_pdf(log_id, supplier_name=None, history_id=None):
                 if history_id:
                     update_history_item_status_safe(history_id, log_id, "Failed", error_message=error_msg)
             except Exception as update_error:
-                frappe.log_error(message=f"Failed to update error status for {log_id}: {str(update_error)[:200]}", title="PDF Generation")
+                frappe.log_error(
+                    message=f"Failed to update error status for {log_id}: {str(update_error)[:200]}",
+                    title="Supplier PDF Generation",
+                )
                 return
-    
-    # Save the final status
+
+    # ── 9. Persist final status ────────────────────────────────────────
     if log_doc:
         try:
             log_doc.save(ignore_permissions=True)
             frappe.db.commit()
-            
-            # Update history summary counts
             if history_id:
                 update_history_summary_counts_safe(history_id)
-                
         except Exception as save_error:
-            frappe.log_error(message=f"Failed to save final status for {log_id}: {str(save_error)[:200]}", title="PDF Generation")
+            frappe.log_error(
+                message=f"Failed to save final status for {log_id}: {str(save_error)[:200]}",
+                title="Supplier PDF Generation",
+            )
 
 @frappe.whitelist()
 def retry_failed_pdf(log_id):

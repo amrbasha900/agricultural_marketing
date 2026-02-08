@@ -16,6 +16,7 @@
   "posting_date",
   "posting_time",
   "amended_from",
+  "status",
   "section_break_nwud",
   "supplier_details_column",
   "supplier",
@@ -306,13 +307,19 @@
    "fieldname": "reference_number",
    "fieldtype": "Data",
    "label": "Reference Number"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-12-17 12:51:50.330041",
+ "modified": "2026-02-02 11:31:17.389516",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",

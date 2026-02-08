@@ -40,6 +40,7 @@ def get_invoices(filters):
             inv_form.supplier, 
             inv_form.has_supplier_commission_invoice,
             inv_form.grand_total,
+            inv_frm_comm.item,
             inv_frm_comm.commission,
             inv_frm_comm.total_commission,
             inv_form.total_commissions_and_taxes
@@ -183,13 +184,14 @@ def create_commission_invoices(parties, posting_date, party_type):
                 })
                 
                 for invoice in regular_invoices:
+                    invoice_item = invoice.get("item") or item
                     commission_invoice.append("items", {
-                        "item_code": item,
-                        "description": item + "\n" + invoice.get("invoice_id", ""),
+                        "item_code": invoice_item,
+                        "description": invoice_item + "\n" + invoice.get("invoice_id", ""),
                         "qty": 1,
                         "rate": invoice.get("total"),
                         "invoice_form": invoice.get("invoice_id"),
-                        "income_account": frappe.db.get_value("Item", item, "item_defaults.income_account")
+                        "income_account": frappe.db.get_value("Item", invoice_item, "item_defaults.income_account")
                     })
                 
                 default_tax_template = get_tax_template(settings)
@@ -255,13 +257,14 @@ def create_commission_invoices(parties, posting_date, party_type):
                             existing_commission_invoice_list.append(existing_commission_invoice)
                 
                 for invoice in return_invoices:
+                    invoice_item = invoice.get("item") or item
                     commission_invoice.append("items", {
-                        "item_code": item,
-                        "description": item + "\n" + invoice.get("invoice_id", ""),
+                        "item_code": invoice_item,
+                        "description": invoice_item + "\n" + invoice.get("invoice_id", ""),
                         "qty": -1,
                         "rate": abs(invoice.get("total")),
                         "invoice_form": invoice.get("invoice_id"),
-                        "income_account": frappe.db.get_value("Item", item, "item_defaults.income_account")
+                        "income_account": frappe.db.get_value("Item", invoice_item, "item_defaults.income_account")
                     })
                 
                 default_tax_template = get_tax_template(settings)

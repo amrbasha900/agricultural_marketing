@@ -179,22 +179,34 @@ def get_report_data(filters):
         # Get opening balances (transactions before from_date)
         opening_balances = get_opening_balances(filters, party)
         
-        # For both customers and suppliers, handle opening balance
         opening_debit = flt(opening_balances.get("opening_debit"))
         opening_credit = flt(opening_balances.get("opening_credit"))
-        opening_balance = opening_balances.get("opening_balance")
-        
-        if opening_debit or opening_credit:
-            party_data["opening_debit"] = abs(opening_debit)
-            party_data["opening_credit"] = abs(opening_credit)
-            opening_balance = opening_debit - opening_credit
-        else:
-            opening_balance = opening_balance or 0
+
+        if filters.get("make_balance_in_opening_total"):
+            # Show opening balance in only one column (net balance)
+            opening_balance = flt(opening_debit - opening_credit, 2)
             if opening_balance > 0:
                 party_data["opening_debit"] = abs(opening_balance)
-            else:
+                party_data["opening_credit"] = 0
+            elif opening_balance < 0:
+                party_data["opening_debit"] = 0
                 party_data["opening_credit"] = abs(opening_balance)
-        
+            else:
+                party_data["opening_debit"] = 0
+                party_data["opening_credit"] = 0
+        else:
+            # Old behavior: keep both sides if present
+            if opening_debit or opening_credit:
+                party_data["opening_debit"] = abs(opening_debit)
+                party_data["opening_credit"] = abs(opening_credit)
+                opening_balance = opening_debit - opening_credit
+            else:
+                opening_balance = flt(opening_balances.get("opening_balance") or 0, 2)
+                if opening_balance > 0:
+                    party_data["opening_debit"] = abs(opening_balance)
+                else:
+                    party_data["opening_credit"] = abs(opening_balance)
+
         party_data["opening_balance"] = abs(opening_balance)
         
         # Get movement data (transactions between from_date and to_date)
@@ -202,15 +214,64 @@ def get_report_data(filters):
         party_data["movement_debit"] = movements.get("movement_debit", 0)
         party_data["movement_credit"] = movements.get("movement_credit", 0)
         
-        # Calculate totals
-        party_data["total_debit"] = party_data["opening_debit"] + party_data["movement_debit"]
-        party_data["total_credit"] = party_data["opening_credit"] + party_data["movement_credit"]
+        if filters.get("make_balance_in_opening_total"):
+            # Calculate totals (net balance shown in one column)
+            total_balance = opening_balance + (party_data["movement_debit"] - party_data["movement_credit"])
+            if total_balance > 0:
+                party_data["total_debit"] = abs(total_balance)
+                party_data["total_credit"] = 0
+            elif total_balance < 0:
+                party_data["total_debit"] = 0
+                party_data["total_credit"] = abs(total_balance)
+            else:
+                party_data["total_debit"] = 0
+                party_data["total_credit"] = 0
+        else:
+            # Old behavior: show totals on both sides
+            party_data["total_debit"] = party_data["opening_debit"] + party_data["movement_debit"]
+            party_data["total_credit"] = party_data["opening_credit"] + party_data["movement_credit"]
         
         # Only add to report if there are non-zero transactions (if filter set)
         if not filters.get("ignore_zero_transactions") or \
            party_data["total_debit"] != 0 or party_data["total_credit"] != 0:
             data.append(party_data)
-    
+
+    if data:
+        total_opening_debit = sum(row.get("opening_debit", 0) for row in data)
+        total_opening_credit = sum(row.get("opening_credit", 0) for row in data)
+        total_movement_debit = sum(row.get("movement_debit", 0) for row in data)
+        total_movement_credit = sum(row.get("movement_credit", 0) for row in data)
+        total_total_debit = sum(row.get("total_debit", 0) for row in data)
+        total_total_credit = sum(row.get("total_credit", 0) for row in data)
+
+        if filters.get("make_balance_in_opening_total"):
+            net_opening = flt(total_opening_debit - total_opening_credit, 2)
+            net_total = flt(total_total_debit - total_total_credit, 2)
+            opening_debit_total = abs(net_opening) if net_opening > 0 else 0
+            opening_credit_total = abs(net_opening) if net_opening < 0 else 0
+            total_debit_total = abs(net_total) if net_total > 0 else 0
+            total_credit_total = abs(net_total) if net_total < 0 else 0
+        else:
+            opening_debit_total = total_opening_debit
+            opening_credit_total = total_opening_credit
+            total_debit_total = total_total_debit
+            total_credit_total = total_total_credit
+
+        total_row = {
+            "party": _("Total"),
+            "customer_name": "",
+            "supplier_name": "",
+            "opening_debit": opening_debit_total,
+            "opening_credit": opening_credit_total,
+            "movement_debit": total_movement_debit,
+            "movement_credit": total_movement_credit,
+            "total_debit": total_debit_total,
+            "total_credit": total_credit_total,
+            "is_total_row": 1
+        }
+
+        data.append(total_row)
+
     return data
 
 def get_party_name_map(filters, parties):

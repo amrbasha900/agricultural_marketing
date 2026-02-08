@@ -230,11 +230,9 @@ frappe.pages['supplier-collection-form'].on_page_load = function(wrapper) {
                 filters: final_filters
             },
             callback: function (r) {
-                if (r.message.html) {
+                if (r.message.file_url) {
                     frappe.dom.unfreeze();
-                    var newWindow = window.open();
-                    newWindow.document.write(`${r.message.html}`)
-                    newWindow.document.close();
+                    window.open(r.message.file_url, "_blank");
                 } else if (r.message.error) {
                     frappe.dom.unfreeze();
                     frappe.throw({

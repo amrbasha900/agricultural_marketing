@@ -319,7 +319,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         if (!historyId) return;
 
         frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_pdf_generation_status',
+            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.get_pdf_generation_status',
             args: {
                 history_id: historyId
             },
@@ -351,7 +351,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
     // Load PDF status (legacy support)
     function loadPDFStatus(filters) {
         frappe.call({
-            method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_pdf_generation_status',
+            method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.get_pdf_generation_status',
             args: {
                 filters: filters
             },
@@ -366,6 +366,11 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
 
     // SECTION 5: Status display functions (reuse from statement forms)
     function displayPDFStatus(logs, historyId = null) {
+        if (!Array.isArray(logs)) {
+            logs = [];
+        }
+        // Extra safety: keep only supplier logs on this page
+        logs = logs.filter(log => (log.party_type || '').toString().toLowerCase() === 'supplier');
         if (logs.length === 0) {
             $results_container.html('<div class="alert alert-info">No PDF generation logs found.</div>');
             return;
@@ -1592,7 +1597,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
             loadPDFStatus(final_filters);
             // Check if there are any active jobs and start auto-refresh
             frappe.call({
-                method: 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.get_pdf_generation_status',
+                method: 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms.get_pdf_generation_status',
                 args: { filters: final_filters },
                 callback: function (r) {
                     if (r.message && r.message.some(log => log.status === 'Queued' || log.status === 'Processing')) {

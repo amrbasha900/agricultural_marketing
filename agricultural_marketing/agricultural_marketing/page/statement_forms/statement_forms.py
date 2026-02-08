@@ -1358,37 +1358,60 @@ def cleanup_failed_logs():
 
 @frappe.whitelist()
 def retry_failed_pdf(log_id):
-    """FIXED - Retry generating PDF for a failed log entry with better error handling"""
+    """Retry generating PDF for a failed log entry.
+    Routes supplier-statement logs to the supplier-specific generator."""
     try:
         log_doc = frappe.get_doc("PDF Generator Log", log_id)
-        
+
         if log_doc.status not in ["Failed"]:
             return {"error": "Can only retry failed jobs"}
-        
+
         # Reset status
         log_doc.status = "Queued"
         log_doc.error_message = ""
         log_doc.save(ignore_permissions=True)
-        
+
         # Update history item safely
-        if hasattr(log_doc, 'statement_generation_history') and log_doc.statement_generation_history:
-            update_history_item_status_safe(log_doc.statement_generation_history, log_id, "Queued")
-        
-        # Queue new background job
+        history_id = getattr(log_doc, "statement_generation_history", None)
+        if history_id:
+            update_history_item_status_safe(history_id, log_id, "Queued")
+
+        # Determine if this is a supplier-statement log
+        is_supplier_statement = False
+        if history_id:
+            is_supplier_statement = frappe.db.get_value(
+                "Statement Generation History", history_id, "supplier_statement"
+            )
+
         safe_party_name = frappe.scrub(log_doc.party_name).replace("_", "-")[:30]
-        frappe.enqueue(
-            method=generate_single_party_pdf,
-            log_id=log_id,
-            party_name=log_doc.party_name,
-            history_id=getattr(log_doc, 'statement_generation_history', None),
-            job_name=f"PDF-Retry-{safe_party_name}",
-            timeout=300,
-            is_async=True
-        )
-        
+
+        if is_supplier_statement:
+            from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
+                generate_single_supplier_pdf,
+            )
+            frappe.enqueue(
+                method=generate_single_supplier_pdf,
+                log_id=log_id,
+                supplier_name=log_doc.party_name,
+                history_id=history_id,
+                job_name=f"PDF-Retry-{safe_party_name}",
+                timeout=300,
+                is_async=True,
+            )
+        else:
+            frappe.enqueue(
+                method=generate_single_party_pdf,
+                log_id=log_id,
+                party_name=log_doc.party_name,
+                history_id=history_id,
+                job_name=f"PDF-Retry-{safe_party_name}",
+                timeout=300,
+                is_async=True,
+            )
+
         frappe.db.commit()
         return {"success": "PDF generation retry queued"}
-        
+
     except Exception as e:
         return {"error": str(e)[:200]}
 
@@ -2534,11 +2557,16 @@ def get_history_whatsapp_job(history_id):
 def retry_all_failed_pdfs(history_id):
     """
     Retry all failed PDF Generator Logs for a given Statement Generation History.
-    Skips missing logs and updates the history summary. Returns a summary dict.
+    Routes supplier-statement logs to the supplier-specific generator.
     """
     try:
         if not history_id:
             return {"error": "No history_id provided"}
+
+        is_supplier_statement = frappe.db.get_value(
+            "Statement Generation History", history_id, "supplier_statement"
+        )
+
         history_doc = frappe.get_doc("Statement Generation History", history_id)
         failed_logs = [item.pdf_generator_log for item in history_doc.pdf_generator_logs if item.status == "Failed"]
         retried = 0
@@ -2547,31 +2575,41 @@ def retry_all_failed_pdfs(history_id):
             try:
                 log_doc = frappe.get_doc("PDF Generator Log", log_id)
                 if log_doc.status == "Failed":
-                    # Reset status and error message
                     log_doc.status = "Queued"
                     log_doc.error_message = ""
                     log_doc.save(ignore_permissions=True)
-                    # Update history item safely
                     update_history_item_status_safe(history_id, log_id, "Queued")
-                    # Queue new background job
+
                     safe_party_name = frappe.scrub(log_doc.party_name).replace("_", "-")[:30]
-                    frappe.enqueue(
-                        method=generate_single_party_pdf,
-                        log_id=log_id,
-                        party_name=log_doc.party_name,
-                        history_id=history_id,
-                        job_name=f"PDF-RetryAll-{safe_party_name}",
-                        timeout=300,
-                        is_async=True
-                    )
+                    if is_supplier_statement:
+                        from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
+                            generate_single_supplier_pdf,
+                        )
+                        frappe.enqueue(
+                            method=generate_single_supplier_pdf,
+                            log_id=log_id,
+                            supplier_name=log_doc.party_name,
+                            history_id=history_id,
+                            job_name=f"PDF-RetryAll-{safe_party_name}",
+                            timeout=300,
+                            is_async=True,
+                        )
+                    else:
+                        frappe.enqueue(
+                            method=generate_single_party_pdf,
+                            log_id=log_id,
+                            party_name=log_doc.party_name,
+                            history_id=history_id,
+                            job_name=f"PDF-RetryAll-{safe_party_name}",
+                            timeout=300,
+                            is_async=True,
+                        )
                     retried += 1
                 else:
                     skipped += 1
             except Exception as e:
-                # Log and skip missing or broken logs
                 frappe.log_error(message=f"Retry all failed: Could not process log {log_id}: {str(e)[:200]}", title="PDF Retry All Failed")
                 skipped += 1
-        # Update summary counts
         update_history_summary_counts_safe(history_id)
         frappe.db.commit()
         return {"success": f"Retried {retried} failed jobs, skipped {skipped}", "retried": retried, "skipped": skipped}
@@ -2831,20 +2869,53 @@ def generate_single_party_pdf(log_id, party_name=None, history_id=None):
 def retry_all_queued_pdf_jobs():
     """
     Scheduled task: Retry all queued PDF Generator Logs every minute.
+    Detects supplier-statement logs and routes them to the correct generator
+    so they use supplier_statement_forms.html instead of statement_forms.html.
     """
-    logs = frappe.get_all("PDF Generator Log", filters={"status": "Queued"}, fields=["name", "party_name", "statement_generation_history"])
+    logs = frappe.get_all(
+        "PDF Generator Log",
+        filters={"status": "Queued"},
+        fields=["name", "party_name", "statement_generation_history"],
+    )
     for log in logs:
         try:
-            frappe.enqueue(
-                method=generate_single_party_pdf,
-                log_id=log["name"],
-                party_name=log["party_name"],
-                history_id=log["statement_generation_history"],
-                job_name=f"PDF-Scheduled-Retry-{log['name']}",
-                timeout=300,
-                is_async=True
+            # Determine if this log belongs to a supplier-statement history
+            is_supplier_statement = False
+            if log.get("statement_generation_history"):
+                is_supplier_statement = frappe.db.get_value(
+                    "Statement Generation History",
+                    log["statement_generation_history"],
+                    "supplier_statement",
+                )
+
+            if is_supplier_statement:
+                # Use the supplier-specific PDF generator (supplier_statement_forms.html)
+                from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
+                    generate_single_supplier_pdf,
+                )
+                frappe.enqueue(
+                    method=generate_single_supplier_pdf,
+                    log_id=log["name"],
+                    supplier_name=log["party_name"],
+                    history_id=log["statement_generation_history"],
+                    job_name=f"PDF-Scheduled-Retry-{log['name']}",
+                    timeout=300,
+                    is_async=True,
+                )
+            else:
+                # Use the standard statement-forms PDF generator
+                frappe.enqueue(
+                    method=generate_single_party_pdf,
+                    log_id=log["name"],
+                    party_name=log["party_name"],
+                    history_id=log["statement_generation_history"],
+                    job_name=f"PDF-Scheduled-Retry-{log['name']}",
+                    timeout=300,
+                    is_async=True,
+                )
+            frappe.logger("pdf_generation").info(
+                f"Re-queued PDF Generator Log {log['name']} via scheduled retry (supplier={is_supplier_statement})."
             )
-            frappe.logger("pdf_generation").info(f"Re-queued PDF Generator Log {log['name']} via scheduled retry.")
         except Exception as e:
             frappe.logger("pdf_generation").error(f"Failed to re-queue {log['name']}: {e}")
 
@@ -2852,25 +2923,45 @@ def retry_all_queued_pdf_jobs():
 def retry_all_queued_and_failed_pdf_jobs_for_history(history_id):
     """
     Retry all queued and failed PDF Generator Logs for a given Statement Generation History.
+    Routes supplier-statement logs to the supplier-specific generator.
     """
     retried = 0
     skipped = 0
+
+    is_supplier_statement = frappe.db.get_value(
+        "Statement Generation History", history_id, "supplier_statement"
+    )
+
     logs = frappe.get_all(
         "PDF Generator Log",
         filters={"statement_generation_history": history_id, "status": ["in", ["Queued", "Failed"]]},
-        fields=["name", "party_name", "statement_generation_history"]
+        fields=["name", "party_name", "statement_generation_history"],
     )
     for log in logs:
         try:
-            frappe.enqueue(
-                method=generate_single_party_pdf,
-                log_id=log["name"],
-                party_name=log["party_name"],
-                history_id=log["statement_generation_history"],
-                job_name=f"PDF-Manual-Retry-{log['name']}",
-                timeout=300,
-                is_async=True
-            )
+            if is_supplier_statement:
+                from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
+                    generate_single_supplier_pdf,
+                )
+                frappe.enqueue(
+                    method=generate_single_supplier_pdf,
+                    log_id=log["name"],
+                    supplier_name=log["party_name"],
+                    history_id=log["statement_generation_history"],
+                    job_name=f"PDF-Manual-Retry-{log['name']}",
+                    timeout=300,
+                    is_async=True,
+                )
+            else:
+                frappe.enqueue(
+                    method=generate_single_party_pdf,
+                    log_id=log["name"],
+                    party_name=log["party_name"],
+                    history_id=log["statement_generation_history"],
+                    job_name=f"PDF-Manual-Retry-{log['name']}",
+                    timeout=300,
+                    is_async=True,
+                )
             retried += 1
         except Exception as e:
             frappe.logger("pdf_generation").error(f"Failed to re-queue {log['name']}: {e}")

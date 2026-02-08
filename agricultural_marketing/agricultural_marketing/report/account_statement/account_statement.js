@@ -77,18 +77,44 @@ frappe.query_reports["Account Statement"] = {
             "label": __("Ignore Zero Balance Accounts"),
             "fieldtype": "Check",
             "default": 0
+        },
+        {
+            "fieldname": "make_balance_in_opening_total",
+            "label": __("Make Balance in Opening/Total"),
+            "fieldtype": "Check",
+            "default": 0
         }
     ],
     
     "formatter": function(value, row, column, data, default_formatter) {
-        value = default_formatter(value, row, column, data);
-        
+        let formatted = default_formatter(value, row, column, data);
+
+        if (data && data.is_total_row) {
+            if (["opening_debit", "opening_credit"].includes(column.fieldname)) {
+                const net_opening = (data.opening_debit || 0) - (data.opening_credit || 0);
+                if (column.fieldname === "opening_debit") {
+                    formatted = net_opening > 0 ? default_formatter(Math.abs(net_opening), row, column, data) : "";
+                } else {
+                    formatted = net_opening < 0 ? default_formatter(Math.abs(net_opening), row, column, data) : "";
+                }
+            }
+
+            if (["total_debit", "total_credit"].includes(column.fieldname)) {
+                const net_total = (data.total_debit || 0) - (data.total_credit || 0);
+                if (column.fieldname === "total_debit") {
+                    formatted = net_total > 0 ? default_formatter(Math.abs(net_total), row, column, data) : "";
+                } else {
+                    formatted = net_total < 0 ? default_formatter(Math.abs(net_total), row, column, data) : "";
+                }
+            }
+        }
+
         if (data && (column.fieldname === "total_debit" || column.fieldname === "total_credit")) {
             // Highlight the total columns
-            value = `<span style="font-weight: bold;">${value}</span>`;
+            formatted = `<span style="font-weight: bold;">${formatted}</span>`;
         }
-        
-        return value;
+
+        return formatted;
     },
     
     "initial_depth": 0,

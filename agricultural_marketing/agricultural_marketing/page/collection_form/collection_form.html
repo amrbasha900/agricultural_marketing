@@ -145,11 +145,44 @@
 </table>
 <hr>
 {% endfor %}
+{% else %}
+<table class="table summary-table" id="summary">
+    <thead>
+    <tr>
+        <th colspan="7">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                {% if is_supplier %}
+                <div style="flex: 1; text-align: center;">
+                    {{ _("اسم المورد") }} : {{ frappe.db.get_value("Supplier", filters.party, "supplier_name") if filters.party else "" }}
+                </div>
+                {% if frappe.db.get_single_value("Agriculture Settings", "show_supplier_code_in_pdf") and filters.party %}
+                <div style="flex: 1; text-align: center;">
+                        <div style="direction:rtl">{{ _("كود المورد") }} : {{ filters.party }}</div>
+                </div>
+                {% endif %}
+                {% else %}
+                <div style="flex: 1; text-align: center;">
+                    {{ _("Customer Name") }} : {{ frappe.db.get_value("Customer", filters.party, "customer_name") if filters.party else "" }}
+                </div>
+                {% if frappe.db.get_single_value("Agriculture Settings", "show_customer_code_in_pdf") and filters.party %}
+                <div style="flex: 1; text-align: center;">
+                        <div style="direction:rtl">{{ _("كود العميل") }} : {{ filters.party }}</div>
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+        </th>
+    </tr>
+    </thead>
+</table>
+<div style="text-align: center; margin-top: 10px;">
+    لا توجد بيانات في الفتره
+</div>
 {% endif %}
 <div id="footer-html" class="visible-pdf">
     <div class="letter-head-footer">
         <div class="row">
-            <div class="col-xs-4" style="text-align: left;font-size: 12px;">وقت الطباعة : {{frappe.utils.format_datetime(frappe.utils.now(), "dd-mm-yyyy HH:mm:ss")}}</div>
+            <div class="col-xs-4" style="text-align: left;font-size: 12px;">وقت الطباعة : {{frappe.utils.format_datetime(frappe.utils.now(), "dd-MM-yyyy HH:mm:ss")}}</div>
             <div class="col-xs-4" style="text-align: center;direction:rtl;font-size: 12px;">
                 صفحة  <span class="page footer"></span> من  <span class="topage footer"></span> 
             </div>
