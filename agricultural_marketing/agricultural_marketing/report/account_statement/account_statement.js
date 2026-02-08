@@ -89,26 +89,6 @@ frappe.query_reports["Account Statement"] = {
     "formatter": function(value, row, column, data, default_formatter) {
         let formatted = default_formatter(value, row, column, data);
 
-        if (data && data.is_total_row) {
-            if (["opening_debit", "opening_credit"].includes(column.fieldname)) {
-                const net_opening = (data.opening_debit || 0) - (data.opening_credit || 0);
-                if (column.fieldname === "opening_debit") {
-                    formatted = net_opening > 0 ? default_formatter(Math.abs(net_opening), row, column, data) : "";
-                } else {
-                    formatted = net_opening < 0 ? default_formatter(Math.abs(net_opening), row, column, data) : "";
-                }
-            }
-
-            if (["total_debit", "total_credit"].includes(column.fieldname)) {
-                const net_total = (data.total_debit || 0) - (data.total_credit || 0);
-                if (column.fieldname === "total_debit") {
-                    formatted = net_total > 0 ? default_formatter(Math.abs(net_total), row, column, data) : "";
-                } else {
-                    formatted = net_total < 0 ? default_formatter(Math.abs(net_total), row, column, data) : "";
-                }
-            }
-        }
-
         if (data && (column.fieldname === "total_debit" || column.fieldname === "total_credit")) {
             // Highlight the total columns
             formatted = `<span style="font-weight: bold;">${formatted}</span>`;
