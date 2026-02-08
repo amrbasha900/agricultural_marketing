@@ -280,3 +280,16 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
     let $btnPDF = page.set_secondary_action( __('Open PDF'), () => { open_pdf(page.fields_dict) });
 
 }
+
+frappe.pages['collection-form'].on_page_show = function(wrapper) {
+    // Always reset date fields to today when the page is shown
+    var page = wrapper.page;
+    if (page && page.fields_dict) {
+        if (page.fields_dict.from_date) {
+            page.fields_dict.from_date.set_value(frappe.datetime.get_today());
+        }
+        if (page.fields_dict.to_date) {
+            page.fields_dict.to_date.set_value(frappe.datetime.get_today());
+        }
+    }
+};

@@ -10,6 +10,12 @@ frappe.ui.form.on("Invoice Form", {
      	filter_basic_info_fields(frm);
      	filter_child_tables_fields(frm);
 
+        // Keep customer field editable after submit so GL entries can be reposted
+        if (frm.doc.docstatus === 1) {
+            frm.fields_dict.items.grid.update_docfield_property('customer', 'read_only', 0);
+            frm.fields_dict.items.grid.update_docfield_property('couple_customer', 'read_only', 0);
+        }
+
          if (frm.doc.docstatus === 1 && !frm.doc.is_return ) {
             frm.add_custom_button(__("Create Return Invoice"), function() {
                 create_return_invoice_from_original(frm);
@@ -621,6 +627,12 @@ function set_fields_readonly_based_on_bulk_reference(frm) {
             }
         });
         
+        // Keep customer field editable in items child table even when bulk_invoice_reference is set
+        // so that customer can be changed after submit and GL entries will be reposted
+        if (frm.doc.docstatus === 1) {
+            frm.fields_dict.items.grid.update_docfield_property('customer', 'read_only', 0);
+            frm.fields_dict.items.grid.update_docfield_property('couple_customer', 'read_only', 0);
+        }
         
     } else {
         // If bulk_invoice_reference is empty, make fields editable again

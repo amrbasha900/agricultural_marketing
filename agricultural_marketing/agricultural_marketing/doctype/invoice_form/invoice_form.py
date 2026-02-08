@@ -79,6 +79,57 @@ class InvoiceForm(Document):
         if self.is_return and self.return_against:
             self.update_original_invoice_returned_quantities()
 
+    def on_update_after_submit(self):
+        """
+        Called when a submitted document is updated (e.g. customer changed in items).
+        Similar to ERPNext Sales Invoice on_update_after_submit for cost center changes.
+        Detects if customer changed in any item row and reposts GL entries accordingly.
+        """
+        needs_repost = self._check_if_customers_updated()
+        if needs_repost:
+            self._repost_gl_entries()
+
+    def _check_if_customers_updated(self):
+        """
+        Check if any customer (or couple_customer flag) in the items table
+        has been modified after submit.
+        """
+        doc_before_update = self.get_doc_before_save()
+        if not doc_before_update:
+            return False
+
+        old_items = {d.name: d for d in doc_before_update.get("items", [])}
+        for item in self.items:
+            old_item = old_items.get(item.name)
+            if not old_item:
+                continue
+            if (old_item.get("customer") != item.get("customer")
+                    or old_item.get("couple_customer") != item.get("couple_customer")):
+                return True
+        return False
+
+    def _repost_gl_entries(self):
+        """
+        Cancel existing GL entries and recreate them with the updated customer.
+        Follows the same pattern as ERPNext Repost Accounting Ledger:
+        1. Mark old GL entries as cancelled and create reversal entries
+        2. Recreate GL entries from the current document state
+        """
+        # Step 1: Cancel old GL entries (mark as cancelled + create reversal entries)
+        self.make_gl_entries_on_cancel()
+
+        # Step 2: Recreate GL entries with updated customer data
+        if self.is_return:
+            self.make_return_gl_entries()
+        else:
+            self.make_gl_entries()
+
+        frappe.msgprint(
+            _("GL Entries have been reposted due to customer change in items."),
+            indicator="green",
+            alert=True,
+        )
+
     def on_trash(self):
         # delete gl entries on deletion of transaction
         if frappe.db.get_single_value("Accounts Settings", "delete_linked_ledger_entries"):

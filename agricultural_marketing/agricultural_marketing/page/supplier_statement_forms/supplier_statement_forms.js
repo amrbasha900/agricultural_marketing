@@ -99,6 +99,8 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         const filters = {};
         for (let key in page.fields_dict) {
             if (page.fields_dict[key] && page.fields_dict[key].get_value) {
+                // Skip date fields - they should always reset to today
+                if (key === 'from_date' || key === 'to_date') continue;
                 filters[key] = page.fields_dict[key].get_value();
             }
         }
@@ -160,7 +162,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         fieldtype: 'Date',
         fieldname: 'from_date',
         reqd: 1,
-        default: savedFilters.from_date || frappe.datetime.get_today(),
+        default: frappe.datetime.get_today(),
         change: saveFilters
     });
     fromDate.$wrapper.removeClass('col-md-2').addClass('col-md-2');
@@ -169,7 +171,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
         label: 'To Date',
         fieldtype: 'Date',
         fieldname: 'to_date',
-        default: savedFilters.to_date || frappe.datetime.get_today(),
+        default: frappe.datetime.get_today(),
         change: saveFilters
     });
     toDate.$wrapper.removeClass('col-md-2').addClass('col-md-2');
@@ -1666,3 +1668,16 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
     }
 
 }; // End of frappe.pages['supplier-statement-forms'].on_page_load
+
+frappe.pages['supplier-statement-forms'].on_page_show = function(wrapper) {
+    // Always reset date fields to today when the page is shown
+    var page = wrapper.page;
+    if (page && page.fields_dict) {
+        if (page.fields_dict.from_date) {
+            page.fields_dict.from_date.set_value(frappe.datetime.get_today());
+        }
+        if (page.fields_dict.to_date) {
+            page.fields_dict.to_date.set_value(frappe.datetime.get_today());
+        }
+    }
+};

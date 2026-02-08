@@ -97,6 +97,7 @@
    "fieldtype": "Section Break"
   },
   {
+   "allow_on_submit": 1,
    "columns": 2,
    "fieldname": "customer",
    "fieldtype": "Link",
@@ -156,6 +157,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "default": "0",
    "fetch_from": "customer.couple_customer",
    "fieldname": "couple_customer",

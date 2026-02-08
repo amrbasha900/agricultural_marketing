@@ -99,6 +99,8 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
         const filters = {};
         for (let key in page.fields_dict) {
             if (page.fields_dict[key] && page.fields_dict[key].get_value) {
+                // Skip date fields - they should always reset to today
+                if (key === 'from_date' || key === 'to_date') continue;
                 filters[key] = page.fields_dict[key].get_value();
             }
         }
@@ -1744,3 +1746,16 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
     }
 
 }; // End of frappe.pages['statement-forms'].on_page_load
+
+frappe.pages['statement-forms'].on_page_show = function(wrapper) {
+    // Always reset date fields to today when the page is shown
+    var page = wrapper.page;
+    if (page && page.fields_dict) {
+        if (page.fields_dict.from_date) {
+            page.fields_dict.from_date.set_value(frappe.datetime.get_today());
+        }
+        if (page.fields_dict.to_date) {
+            page.fields_dict.to_date.set_value(frappe.datetime.get_today());
+        }
+    }
+};
