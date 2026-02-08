@@ -244,18 +244,10 @@ def get_report_data(filters):
         total_total_debit = sum(row.get("total_debit", 0) for row in data)
         total_total_credit = sum(row.get("total_credit", 0) for row in data)
 
-        if filters.get("make_balance_in_opening_total"):
-            net_opening = flt(total_opening_debit - total_opening_credit, 2)
-            net_total = flt(total_total_debit - total_total_credit, 2)
-            opening_debit_total = abs(net_opening) if net_opening > 0 else 0
-            opening_credit_total = abs(net_opening) if net_opening < 0 else 0
-            total_debit_total = abs(net_total) if net_total > 0 else 0
-            total_credit_total = abs(net_total) if net_total < 0 else 0
-        else:
-            opening_debit_total = total_opening_debit
-            opening_credit_total = total_opening_credit
-            total_debit_total = total_total_debit
-            total_credit_total = total_total_credit
+        opening_debit_total = total_opening_debit
+        opening_credit_total = total_opening_credit
+        total_debit_total = total_total_debit
+        total_credit_total = total_total_credit
 
         total_row = {
             "party": _("Total"),
