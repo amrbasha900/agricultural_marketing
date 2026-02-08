@@ -103,14 +103,28 @@
             {% total_credit += data[i].total_credit || 0; %}
         {% } %}
         
+        {% var display_opening_debit = total_opening_debit,
+               display_opening_credit = total_opening_credit,
+               display_total_debit = total_debit,
+               display_total_credit = total_credit;
+        %}
+        {% if (filters.make_balance_in_opening_total) { %}
+            {% var net_opening = (total_opening_debit || 0) - (total_opening_credit || 0); %}
+            {% var net_total = (total_debit || 0) - (total_credit || 0); %}
+            {% display_opening_debit = net_opening > 0 ? Math.abs(net_opening) : 0; %}
+            {% display_opening_credit = net_opening < 0 ? Math.abs(net_opening) : 0; %}
+            {% display_total_debit = net_total > 0 ? Math.abs(net_total) : 0; %}
+            {% display_total_credit = net_total < 0 ? Math.abs(net_total) : 0; %}
+        {% } %}
+
         <tr class="total-row">
             <td style="font-size: 14px;font-weight: 700;text-align: center;">الإجماليات</td>
-            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_opening_debit) %}</td>
-            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_opening_credit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(display_opening_debit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(display_opening_credit) %}</td>
             <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_movement_debit) %}</td>
             <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_movement_credit) %}</td>
-            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_debit) %}</td>
-            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(total_credit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(display_total_debit) %}</td>
+            <td style="font-size: 14px;font-weight: 700;text-align: center;">{%= format_currency(display_total_credit) %}</td>
         </tr>
     </tbody>
 </table>
