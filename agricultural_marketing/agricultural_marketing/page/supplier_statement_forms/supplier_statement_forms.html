@@ -137,9 +137,9 @@
             {{ frappe.format_value(sum.credit, {"fieldtype": "Currency"}) }} 
             {% elif sum.statement == "Duration Payments"%} 
             {% if sum.credit | float < 0 %}
-            {{ frappe.format_value(sum.credit | abs, {"fieldtype": "Currency"}) }} 
+            {{ frappe.format_value(sum.credit or 0 | abs, {"fieldtype": "Currency"}) }} 
             {% elif sum.debit | float < 0 %}
-            {{ frappe.format_value(sum.debit | abs, {"fieldtype": "Currency"}) }} 
+            {{ frappe.format_value(sum.debit or 0 | abs, {"fieldtype": "Currency"}) }} 
             {% else %}
             0 
             {% endif %}
@@ -147,8 +147,8 @@
             0 
             {% endif %}
         </td>
-        <td style="direction: ltr;"> {% if sum.balance and sum.balance | float > 0 %} {{ frappe.format_value(sum.balance | abs, {"fieldtype": "Currency"}) }} {% else %} 0 {% endif %}</td>
-        <td style="direction: ltr;"> {% if sum.balance and sum.balance | float < 0 %} {{ frappe.format_value(sum.balance | abs, {"fieldtype": "Currency"}) }} {% else %} 0 {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.balance and sum.balance | float > 0 %} {{ frappe.format_value(sum.balance or 0 | abs, {"fieldtype": "Currency"}) }} {% else %} 0 {% endif %}</td>
+        <td style="direction: ltr;"> {% if sum.balance and sum.balance | float < 0 %} {{ frappe.format_value(sum.balance or 0 | abs, {"fieldtype": "Currency"}) }} {% else %} 0 {% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
