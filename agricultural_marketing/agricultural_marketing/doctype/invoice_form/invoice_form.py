@@ -12,11 +12,23 @@ from frappe.model.naming import make_autoname
 
 
 class InvoiceForm(Document):
-    settings = frappe.get_single("Agriculture Settings")
 
-    if settings.get("pos_profile") != None:
-        pos_profile = frappe.get_doc("POS Profile", settings.get("pos_profile"))
-    customer_commission_invoice_refs = []
+    @property
+    def settings(self):
+        """Load Agriculture Settings fresh per-request to avoid stale class-level cache."""
+        return frappe.get_single("Agriculture Settings")
+
+    @property
+    def pos_profile(self):
+        """Load POS Profile fresh based on current settings."""
+        pos_profile_name = self.settings.get("pos_profile")
+        if pos_profile_name:
+            return frappe.get_doc("POS Profile", pos_profile_name)
+        return None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.customer_commission_invoice_refs = []
 
     # def autoname(self):
     #     """
@@ -1165,7 +1177,8 @@ def get_tax_template(invoice):
     default_tax_template = invoice.settings.get("default_tax")
 
     if not default_tax_template:
-        default_tax_template = frappe.db.get_value("Sales Taxes and Charges",
+        # Fallback: query the correct parent doctype (Template), not the child table
+        default_tax_template = frappe.db.get_value("Sales Taxes and Charges Template",
                                                    {"is_default": 1}, "name")
 
     return default_tax_template
