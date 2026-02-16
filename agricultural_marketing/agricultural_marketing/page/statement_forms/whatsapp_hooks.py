@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.utils import cint, getdate
 
 def update_statement_history_whatsapp_status(doc, method):
     """
@@ -185,12 +186,24 @@ def sync_whatsapp_statuses():
 
 def cleanup_old_pdf_logs():
     """
-    Cleanup old PDF Generator Logs and their files (older than 90 days)
-    Can be set up as a scheduled job
+        Cleanup old PDF Generator Logs and their files.
+        Retention is controlled from Agriculture Settings (cleanup_after_days).
+        Can be set up as a scheduled job
     """
     try:
-        cutoff_date = frappe.utils.add_days(frappe.utils.today(), -90)
-        
+        auto_cleanup_enabled = cint(
+                    frappe.db.get_single_value("Agriculture Settings", "enable_auto_cleanup") or 0
+                )
+        if not auto_cleanup_enabled:
+            return {"success": "Auto cleanup is disabled in Agriculture Settings"}
+
+        cleanup_after_days = cint(
+            frappe.db.get_single_value("Agriculture Settings", "cleanup_after_days") or 1
+        )
+        if cleanup_after_days < 1:
+            cleanup_after_days = 1
+
+        cutoff_date = frappe.utils.add_days(frappe.utils.today(), -cleanup_after_days)        
         # Get old PDF logs
         old_logs = frappe.get_all(
             "PDF Generator Log",
@@ -198,29 +211,74 @@ def cleanup_old_pdf_logs():
                 "creation": ["<", cutoff_date],
                 "status": ["in", ["Completed", "Failed"]]
             },
-            fields=["name", "pdf_file"]
+            fields=["name", "pdf_file", "statement_generation_history"]
         )
         
-        deleted_count = 0
+        deleted_log_count = 0
+        history_ids_to_cleanup = set()
+
         for log in old_logs:
+            history_id = getattr(log, "statement_generation_history", None)
             try:
+                if history_id:
+                    # Unlink/delete child items pointing to this PDF log to avoid link errors
+                    frappe.db.delete(
+                        "Statement Generation History Item",
+                        {"parent": history_id, "pdf_generator_log": log.name},
+                    )
+                    history_ids_to_cleanup.add(history_id)
+
                 # Delete the PDF file if it exists
                 if log.pdf_file:
                     try:
                         file_doc = frappe.get_doc("File", {"file_url": log.pdf_file})
                         file_doc.delete(ignore_permissions=True)
-                    except:
+                    except Exception:
                         pass  # File might already be deleted
                 
                 # Delete the PDF Generator Log
-                frappe.delete_doc("PDF Generator Log", log.name, ignore_permissions=True)
-                deleted_count += 1
+                frappe.delete_doc("PDF Generator Log", log.name, ignore_permissions=True, force=1)
+                deleted_log_count += 1
                 
             except Exception as e:
                 frappe.log_error(message=f"Error deleting PDF log {log.name}: {str(e)}", title="PDF Log Cleanup")
+
+        deleted_history_count = 0
+        for history_id in history_ids_to_cleanup:
+            try:
+                history_meta = frappe.db.get_value(
+                    "Statement Generation History",
+                    history_id,
+                    ["generation_time", "creation"],
+                    as_dict=True,
+                )
+
+                # Delete history if it is old enough or if it no longer has items
+                remaining_items = frappe.db.count("Statement Generation History Item", {"parent": history_id})
+                history_date = None
+                if history_meta:
+                    history_date = history_meta.get("generation_time") or history_meta.get("creation")
+
+                should_delete_history = remaining_items == 0
+                if history_date:
+                    should_delete_history = should_delete_history or getdate(history_date) <= getdate(cutoff_date)
+
+                if should_delete_history:
+                    # Remove any remaining child items to avoid link issues, then delete the parent
+                    frappe.db.delete("Statement Generation History Item", {"parent": history_id})
+                    frappe.delete_doc("Statement Generation History", history_id, ignore_permissions=True, force=1)
+                    deleted_history_count += 1
+            except Exception as e:
+                frappe.log_error(message=f"Error deleting Statement Generation History {history_id}: {str(e)}", title="PDF Log Cleanup")
         
         frappe.db.commit()
-        return {"success": f"Cleaned up {deleted_count} old PDF logs"}
+        frappe.error_log(
+            message=f"Cleaned up {deleted_log_count} old PDF logs and {deleted_history_count} Statement Generation History records",
+            title="PDF Log Cleanup",
+        )
+        return {
+            "success": f"Cleaned up {deleted_log_count} PDF logs and {deleted_history_count} Statement Generation History records"
+        }
         
     except Exception as e:
         frappe.log_error(message=f"Error in PDF log cleanup: {str(e)}", title="PDF Log Cleanup")

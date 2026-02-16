@@ -166,9 +166,7 @@ doc_events = {
 # }
 scheduler_events = {
     "daily": [
-        "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.sync_whatsapp_statuses"
-    ],
-    "weekly": [
+        "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.sync_whatsapp_statuses",
         "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.cleanup_old_pdf_logs"
     ],
     "cron": {
