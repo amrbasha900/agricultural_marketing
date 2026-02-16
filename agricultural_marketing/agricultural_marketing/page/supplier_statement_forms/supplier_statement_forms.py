@@ -940,6 +940,26 @@ def send_whatsapp_for_party(log_id):
         return {"error": error_message}
 
     except Exception as e:
+        # When create_whatsapp_messages raises (e.g. gateway down, session disconnected),
+        # the "error in result" path above is never run. Update log and history here.
+        try:
+            log_doc = frappe.get_doc("PDF Generator Log", log_id)
+            log_doc.whatsapp_sent = 0
+            log_doc.whatsapp_status = "Failed"
+            log_doc.error_message = str(e)
+            log_doc.save(ignore_permissions=True)
+            if getattr(log_doc, "statement_generation_history", None):
+                update_history_item_status_safe(
+                    log_doc.statement_generation_history,
+                    log_id,
+                    log_doc.status,
+                    error_message=str(e),
+                    whatsapp_status="Failed",
+                )
+                update_history_summary_counts_safe(log_doc.statement_generation_history)
+            frappe.db.commit()
+        except Exception as inner:
+            frappe.log_error(message=f"Failed to update log/history after WhatsApp error: {inner}", title="Send WhatsApp for Party")
         return {"error": str(e)}
 
 
@@ -980,6 +1000,25 @@ def queue_whatsapp_for_party(log_id):
         frappe.db.commit()
         return {"success": "WhatsApp send queued"}
     except Exception as e:
+        # Update log and history so summary counts stay current (same pattern as send_whatsapp_for_party)
+        try:
+            log_doc = frappe.get_doc("PDF Generator Log", log_id)
+            log_doc.whatsapp_sent = 0
+            log_doc.whatsapp_status = "Failed"
+            log_doc.error_message = str(e)
+            log_doc.save(ignore_permissions=True)
+            if getattr(log_doc, "statement_generation_history", None):
+                update_history_item_status_safe(
+                    log_doc.statement_generation_history,
+                    log_id,
+                    log_doc.status,
+                    error_message=str(e),
+                    whatsapp_status="Failed",
+                )
+                update_history_summary_counts_safe(log_doc.statement_generation_history)
+            frappe.db.commit()
+        except Exception as inner:
+            frappe.log_error(message=f"Failed to update log/history after queue error: {inner}", title="Queue WhatsApp for Party")
         return {"error": str(e)}
 
 
@@ -1748,12 +1787,12 @@ def update_history_summary_counts_safe(history_id):
                 """
                 select count(1) as cnt
                 from `tabStatement Generation History Item`
-                where parent=%s and ifnull(whatsapp_status, 'Not Created') <> 'Not Created'
+                where parent=%s and whatsapp_status = 'Sent'
                 """,
                 (history_id,),
                 as_dict=True,
             )[0].cnt
-
+            frappe.log_error(message=f"Whatsapp sent count: {whatsapp_sent_count}", title="Statement Generation History")
             frappe.db.set_value(
                 "Statement Generation History",
                 history_id,

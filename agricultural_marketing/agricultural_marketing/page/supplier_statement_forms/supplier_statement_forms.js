@@ -448,6 +448,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                         <button class="btn btn-sm sf-action-btn btn-primary" id="refresh-status" style="margin: 5px;">${__('Refresh')}</button>
                         <button class="btn btn-sm sf-action-btn btn-success" id="download-all" style="margin: 5px;">${__('Download All (ZIP)')}</button>
                         <button class="btn btn-sm sf-action-btn btn-warning" id="send-all-whatsapp" style="margin: 5px;">${__('Send All WhatsApp')}</button>
+                        <button class="btn btn-sm sf-action-btn btn-outline-success" id="send-selected-whatsapp" style="margin: 5px;">${__('Send Selected to WhatsApp')}</button>
                         <button class="btn btn-sm sf-action-btn btn-outline-warning" id="retry-all-whatsapp" style="margin: 5px;">${__('Retry All WhatsApp')}</button>
                         <button class="btn btn-sm sf-action-btn btn-outline-danger" id="cancel-whatsapp-queue" style="margin: 5px;">${__('Cancel WhatsApp Queue')}</button>
                         ${(failedJobs > 0 && historyId) ? `<button class=\"btn btn-sm sf-action-btn btn-outline-danger\" id=\"retry-all-failed\" style=\"margin: 5px;\">${__('Retry All Failed')}</button>` : ''}
@@ -789,6 +790,27 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                     );
                 });
             }
+        });
+
+        $('#send-selected-whatsapp').on('click', function () {
+            if ($('#send-selected-whatsapp').prop('disabled')) {
+                frappe.msgprint(__('WhatsApp queue is running. Please wait until it finishes.'));
+                return;
+            }
+            let selectedIds = $('.row-checkbox:checked').map(function () {
+                return this.value;
+            }).get();
+            if (selectedIds.length === 0) {
+                frappe.msgprint(__('Please select at least one completed PDF to send via WhatsApp.'));
+                return;
+            }
+            ensureWhatsAppSessionConnected(() => {
+                frappe.confirm(
+                    __(`Send WhatsApp to ${selectedIds.length} selected supplier(s) only?`),
+                    () => sendBulkWhatsApp(selectedIds),
+                    () => frappe.msgprint(__('Cancelled'))
+                );
+            });
         });
 
         $('#view-history-details').on('click', function () {
@@ -1425,6 +1447,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
 
     function setWhatsAppButtonsDisabled(disabled) {
         $('#send-all-whatsapp').prop('disabled', disabled);
+        $('#send-selected-whatsapp').prop('disabled', disabled);
         $('#retry-all-whatsapp').prop('disabled', disabled);
     }
 
