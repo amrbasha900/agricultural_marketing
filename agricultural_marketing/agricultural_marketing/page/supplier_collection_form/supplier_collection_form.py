@@ -43,7 +43,6 @@ def execute(filters):
         "layout_direction": "rtl" if is_rtl() else "ltr",
         "font_size": font_size
     }
-
     html = frappe.render_template(html_format, context)
 
     if filters.get("open_pdf"):
@@ -247,13 +246,13 @@ def get_party_summary(filters, party_type, data):
         for gl in gl_entries:
             debit += gl.debit
             credit += gl.credit
-
+        frappe.log_error("gl entries debit: " + str(debit) + " credit: " + str(credit), "calculate_opening_balance_with_totals")
         # GET total items and payments before from date
         if filters.get("consider_draft"):
             draft_items = get_draft_total_items(filters, party) or {"debit": 0, "credit": 0}
+            frappe.log_error("draft items debit: " + str(draft_items.get("debit", 0)) + " credit: " + str(draft_items.get("credit", 0)), "calculate_opening_balance_with_totals")
             total_payments = get_draft_total_payments(filters, party) or 0
-            frappe.errprint("draft_items: " + str(draft_items))
-            frappe.errprint("total_payments: " + str(total_payments))
+            frappe.log_error("total_payments: " + str(total_payments), "calculate_opening_balance_with_totals")
             if filters.get("party_type") == "Supplier":
                 total_draft_commission = get_draft_total_commission(filters, party) or 0
                 frappe.errprint("total_draft_commission: " + str(total_draft_commission))
@@ -265,13 +264,21 @@ def get_party_summary(filters, party_type, data):
 
 
         last_balance = debit - credit
-        if abs(debit) > abs(credit):
+        frappe.errprint("last_balance: " + str(last_balance))
+        # if abs(debit) > abs(credit):
+        #     debit = abs(last_balance)
+        #     credit = 0
+        # else:
+        #     credit = abs(last_balance)
+        #     debit = 0
+        if last_balance > 0:
             debit = abs(last_balance)
             credit = 0
         else:
             credit = abs(last_balance)
             debit = 0
-
+        frappe.errprint("debit: " + str(debit))
+        frappe.errprint("credit: " + str(credit))
         # Append Opening
         final_data.setdefault(party, []).append({
             "doctype": "",

@@ -208,7 +208,7 @@ def get_reports(filters):
 
         header_details = get_header_data(filters.get("party_group"), key)
         font_size = frappe.db.get_single_value("Agriculture Settings", "font_size") or 14
-        
+        frappe.errprint("party_summary: " + str(party_summary))
         context = {
             "letter_head": letter_head,
             "header": header_details,
@@ -539,20 +539,34 @@ def get_party_summary(filters, party_type, party, party_data):
 
     def append_summary(statement, debit, credit):
         nonlocal last_balance
+
+        debit = flt(debit)
+        credit = flt(credit)
+
+        # ✅ move negatives to the other side
+        if debit < 0:
+            credit += abs(debit)
+            debit = 0
+        if credit < 0:
+            debit += abs(credit)
+            credit = 0
+
         if switch_columns:
             debit, credit = credit, debit
 
         last_balance = update_balance(last_balance, debit, credit)
         party_summary.append({
             "statement": statement,
-            "debit": flt(debit, 2) or str(debit),
-            "credit": flt(credit, 2) or str(credit),
-            "balance": flt(last_balance, 2) or str(last_balance)
+            "debit": flt(debit, 2),
+            "credit": flt(credit, 2),
+            "balance": flt(last_balance, 2)
         })
+
 
     switch_columns = True if party_type == "Customer" else False
     party_summary = []
     debit, credit, last_balance = 0, 0, 0
+    calc_opening = int(filters.get("calculate_opening_balance_with_totals") or 0)
     from_date = filters.get('from_date')
 
     gl_filters = {
@@ -581,36 +595,44 @@ def get_party_summary(filters, party_type, party, party_data):
     for gl in gl_entries:
         debit += gl.debit
         credit += gl.credit
-
+    from agricultural_marketing.agricultural_marketing.page.supplier_collection_form import supplier_collection_form as supplier_collection_form_module
     # GET total items and payments before from date
     if filters.get("consider_draft"):
-        total_items = get_draft_total_items(filters, party) or 0
-        total_payments = get_draft_total_payments(filters, party) or 0
+        total_items = supplier_collection_form_module.get_draft_total_items(filters, party) or 0
+        total_payments = supplier_collection_form_module.get_draft_total_payments(filters, party) or 0
         if filters.get("party_type") == "Supplier":
-            total_draft_commission = get_draft_total_commission(filters, party) or 0
-            debit += total_payments + total_draft_commission
-            credit += total_items
+            total_draft_commission = supplier_collection_form_module.get_draft_total_commission(filters, party) or 0
+            debit += total_payments + total_items.get("debit", 0) + total_draft_commission
+            credit += total_items.get("credit", 0)
         else:
-            debit += total_items
-            credit += total_payments
+            debit += total_items.get("debit", 0)
+            credit += total_payments + total_items.get("credit", 0)
 
-    if filters.get("party_type") == "Supplier":
-        previous_buying_total = get_buying_total_before_from_date(filters, party) or 0
-        debit += previous_buying_total
-
+    # if filters.get("party_type") == "Supplier":
+    #     previous_buying_total = get_buying_total_before_from_date(filters, party) or 0
+    #     debit += previous_buying_total
     # Calculate totals
     total_sales, total_commission_with_taxes = get_total_sales_and_commissions(party_data)
     total_buying = get_total_buying(party_data) if filters.get("party_type") == "Supplier" else 0
     total_payments = get_total_payments(party_data)
     last_balance = debit - credit
     
-    if not filters.get("calculate_opening_balance_with_totals", False):
-        if abs(debit) > abs(credit):
+    if calc_opening == 0:
+        # one-sided opening (old behavior)
+        if last_balance > 0:
             debit = abs(last_balance)
             credit = 0
         else:
             credit = abs(last_balance)
             debit = 0
+    else:
+        # totals mode: keep debit/credit totals but never negative columns
+        if debit < 0:
+            credit += abs(debit)
+            debit = 0
+        if credit < 0:
+            debit += abs(credit)
+            credit = 0
 
     # Append Opening
     party_summary.append({
@@ -633,20 +655,22 @@ def get_party_summary(filters, party_type, party, party_data):
 
     # Calculate and append closing
     total_debit = total_commission_with_taxes + total_payments
-    if filters.get("party_type") == "Supplier":
-        total_debit += total_buying
-    total_credit = total_sales
-    if switch_columns:
-        total_debit, total_credit = total_credit, total_debit
+    total_debit = sum(flt(r.get("debit") or 0) for r in party_summary)
+    total_credit = sum(flt(r.get("credit") or 0) for r in party_summary)
 
-    total_debit += debit
-    total_credit += credit
+    # (optional) keep totals non-negative
+    if total_debit < 0:
+        total_credit += abs(total_debit)
+        total_debit = 0
+    if total_credit < 0:
+        total_debit += abs(total_credit)
+        total_credit = 0
 
     party_summary.append({
         "statement": _("Total"),
-        "debit": flt(total_debit, 2) or "0",
-        "credit": flt(total_credit, 2) or "0",
-        "balance": flt(total_debit - total_credit, 2) or "0"
+        "debit": flt(total_debit, 2),
+        "credit": flt(total_credit, 2),
+        "balance": flt(total_debit - total_credit, 2)
     })
 
     return party_summary
