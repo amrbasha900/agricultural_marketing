@@ -73,11 +73,11 @@ def get_data(filters):
 			ROUND(
 				CASE
 					WHEN SUM(ifi.total) > 0
-					THEN SUM(ifi.total * ifi.commission / 100) / SUM(ifi.total) * 100
+					THEN SUM( ifi.commission) / SUM(ifi.total) * 100
 					ELSE 0
 				END,
 			2) AS commission_rate,
-			SUM(ifi.total * ifi.commission / 100) AS total_commission,
+			SUM(ifi.commission) AS total_commission,
 			COUNT(ifi.name) AS num_sales,
 			SUM(ifi.qty) AS num_units
 		FROM
