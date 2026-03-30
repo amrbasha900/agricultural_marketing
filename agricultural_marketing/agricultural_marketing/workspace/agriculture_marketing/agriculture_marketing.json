@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"zW8e7j728U\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">\u0627\u0644\u062a\u0633\u0648\u064a\u0642 \u0627\u0644\u0632\u0631\u0627\u0639\u064a</span>\",\"col\":12}},{\"id\":\"kjt-421HCB\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":5}},{\"id\":\"goITqpXKd8\",\"type\":\"card\",\"data\":{\"card_name\":\"Doctypes\",\"col\":5}},{\"id\":\"z1MnMBs5Mb\",\"type\":\"card\",\"data\":{\"card_name\":\"General Reports\",\"col\":4}},{\"id\":\"FW5yzDt7Rz\",\"type\":\"card\",\"data\":{\"card_name\":\"Supplier Reports\",\"col\":4}},{\"id\":\"NG5lVtpWLo\",\"type\":\"card\",\"data\":{\"card_name\":\"Customer Reports\",\"col\":4}}]",
+ "content": "[{\"id\":\"zW8e7j728U\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">\u0627\u0644\u062a\u0633\u0648\u064a\u0642 \u0627\u0644\u0632\u0631\u0627\u0639\u064a</span>\",\"col\":12}},{\"id\":\"kjt-421HCB\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":5}},{\"id\":\"goITqpXKd8\",\"type\":\"card\",\"data\":{\"card_name\":\"Doctypes\",\"col\":5}},{\"id\":\"z1MnMBs5Mb\",\"type\":\"card\",\"data\":{\"card_name\":\"General Reports\",\"col\":4}},{\"id\":\"FW5yzDt7Rz\",\"type\":\"card\",\"data\":{\"card_name\":\"Supplier Reports\",\"col\":4}},{\"id\":\"NG5lVtpWLo\",\"type\":\"card\",\"data\":{\"card_name\":\"Customer Reports\",\"col\":4}},{\"id\":\"g2GMVTKQqs\",\"type\":\"card\",\"data\":{\"card_name\":\"\u062a\u0642\u0627\u0631\u064a\u0631 \u0645\u062e\u0635\u0635\u0629\",\"col\":4}}]",
  "creation": "2024-07-27 17:53:30.500530",
  "custom_blocks": [],
  "docstatus": 0,
@@ -259,7 +259,7 @@
    "type": "Link"
   }
  ],
- "modified": "2025-05-25 15:38:51.438593",
+ "modified": "2026-03-24 03:58:34.530164",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Marketing",
@@ -269,7 +269,7 @@
  "public": 1,
  "quick_lists": [],
  "roles": [],
- "sequence_id": 6.0,
+ "sequence_id": 11.0,
  "shortcuts": [],
  "title": "Agriculture Marketing"
 }

@@ -730,7 +730,7 @@ def get_draft_payments_data(filters, ctx=None):
             query = query.where(payments.party_type == filters.get("party_type"))
 
         if filters.get("mode_of_payment"):
-            query = query.where(payments.mode_of_payment == filters.get("mode_of_payment"))
+            query = query.where(references.mode_of_payment == filters.get("mode_of_payment"))
 
         payment_data = query.run(as_dict=True)
 
