@@ -47,6 +47,7 @@ class InvoiceForm(Document):
         self.update_customer_commission()
         self.update_commission_and_taxes()
         self.add_pamper_commission()
+        self.check_negative_item_rate()
         if hasattr(self, 'is_return') and self.is_return:
                 self.validate_return_amounts()
                 if hasattr(self, 'return_against') and self.return_against:
@@ -67,6 +68,14 @@ class InvoiceForm(Document):
         # Only validate credit limits for non-return invoices
         if not self.is_return:
             validate_customer_credit_limit(self, "validate")
+    
+    def check_negative_item_rate(self):
+        if not self.is_return:
+            for item in self.items:
+                if item.price < 0:
+                    frappe.throw(_("Item price cannot be negative"))
+            
+
 
     def on_submit(self):
         if self.is_return and not self.return_reason:
