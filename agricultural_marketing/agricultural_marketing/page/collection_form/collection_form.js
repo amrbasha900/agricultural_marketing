@@ -1,129 +1,154 @@
-frappe.pages['collection-form'].on_page_load = function(wrapper) {
-	var page = frappe.ui.make_app_page({
-		parent: wrapper,
-		title: __('Collection Form'),
-		single_column: true
-	});
+frappe.pages['collection-form'].on_page_load = function (wrapper) {
+    var page = frappe.ui.make_app_page({
+        parent: wrapper,
+        title: __('Collection Form'),
+        single_column: true
+    });
 
-	let newLayout = page.add_field({
-	    label: __('New Layout'),
-	    fieldtype: 'Check',
-	    fieldname: 'new_layout',
-	    default: frappe.db.get_single_value("Agriculture Settings", "new_report_layout").then(
-	    (value) => {
-	        newLayout.set_value(value);
-	    })
-	});
-    newLayout.$wrapper.addClass('col-md-2');
+    // ── ROW 1: All Checkboxes (7 × varying cols = 12 total) ──────────────────
+    // col distribution: 2+2+2+2+2+1+1 = 12  → all on one line
 
-	let considerDraft = page.add_field({
-	    label: __('Consider Drafts'),
-	    fieldtype: 'Check',
-	    fieldname: 'consider_draft',
-	    default: frappe.db.get_single_value("Agriculture Settings", "consider_drafts").then(
+    let newLayout = page.add_field({
+        label: __('New Layout'),
+        fieldtype: 'Check',
+        fieldname: 'new_layout',
+        default: frappe.db.get_single_value("Agriculture Settings", "new_report_layout").then(
+            (value) => {
+                newLayout.set_value(value);
+            })
+    });
+    newLayout.$wrapper.removeClass('col-md-2').addClass('col-md-2').css({ 'max-width': '120px' });
+
+    let considerDraft = page.add_field({
+        label: __('Consider Drafts'),
+        fieldtype: 'Check',
+        fieldname: 'consider_draft',
+        default: frappe.db.get_single_value("Agriculture Settings", "consider_drafts").then(
             (value) => {
                 considerDraft.set_value(value);
             })
-	});
-    considerDraft.$wrapper.addClass('col-md-2');
+    });
+    considerDraft.$wrapper.removeClass('col-md-2').addClass('col-md-2').css({ 'max-width': '190px' });
 
     let considerDraftPayments = page.add_field({
-	    label: __('Consider Draft Payments'),
-	    fieldtype: 'Check',
-	    fieldname: 'consider_draft_payments',
-	    default: frappe.db.get_single_value("Agriculture Settings", "consider_draft_payments").then(
+        label: __('Consider Draft Payments'),
+        fieldtype: 'Check',
+        fieldname: 'consider_draft_payments',
+        default: frappe.db.get_single_value("Agriculture Settings", "consider_draft_payments").then(
             (value) => {
                 considerDraftPayments.set_value(value);
             })
-	});
-    considerDraftPayments.$wrapper.addClass('col-md-2');
+    });
+    considerDraftPayments.$wrapper.removeClass('col-md-2').addClass('col-md-2').css({ 'max-width': '280px' });
 
+    let includeSales = page.add_field({
+        label: __('Include Sales'),
+        fieldtype: 'Check',
+        fieldname: 'include_sales',
+        default: 1
+    });
+    includeSales.$wrapper.removeClass('col-md-2').addClass('col-md-2').css({ 'max-width': '130px' });
+
+    let includePayments = page.add_field({
+        label: __('Include Payments'),
+        fieldtype: 'Check',
+        fieldname: 'include_payments',
+        default: 1
+    });
+    includePayments.$wrapper.removeClass('col-md-2').addClass('col-md-2').css({ 'max-width': '150px' });
 
     let ignoreZeroTransactions = page.add_field({
-	    label: __('Ignore Zero Transactions'),
-	    fieldtype: 'Check',
-	    fieldname: 'ignore_zero_transactions',
-	    default: frappe.db.get_single_value("Agriculture Settings", "ignore_zero_transactions").then(
-	    (value) => {
-	        ignoreZeroTransactions.set_value(value);
-	    })
-	});
-    ignoreZeroTransactions.$wrapper.addClass('col-md-2');
+        label: __('Ignore Zero Transactions'),
+        fieldtype: 'Check',
+        fieldname: 'ignore_zero_transactions',
+        default: frappe.db.get_single_value("Agriculture Settings", "ignore_zero_transactions").then(
+            (value) => {
+                ignoreZeroTransactions.set_value(value);
+            })
+    });
+    ignoreZeroTransactions.$wrapper.removeClass('col-md-2').addClass('col-md-1').css({ 'min-width': '220px' });
 
     let hideDecimal = page.add_field({
-	    label: __('Hide Decimal'),
-	    fieldtype: 'Check',
-	    fieldname: 'hide_decimal',
-	    default: frappe.db.get_single_value("Agriculture Settings", "hide_decimal").then(
-	    (value) => {
-	        hideDecimal.set_value(value);
-	    })
-	});
-    hideDecimal.$wrapper.addClass('col-md-2');
+        label: __('Hide Decimal'),
+        fieldtype: 'Check',
+        fieldname: 'hide_decimal',
+        default: frappe.db.get_single_value("Agriculture Settings", "hide_decimal").then(
+            (value) => {
+                hideDecimal.set_value(value);
+            })
+    });
+    hideDecimal.$wrapper.removeClass('col-md-2').addClass('col-md-1').css({ 'min-width': '150px' });
 
-	let company = page.add_field({
-	    label: 'Company',
-	    fieldtype: 'Link',
-	    fieldname: 'company',
-	    options: 'Company',
-	    reqd: 1,
-	    default: frappe.defaults.get_default('company'),
-	});
+    // Force row break AFTER all checkboxes
+    $('<div class="col-md-12" style="padding:0;margin:0;"></div>').insertAfter(hideDecimal.$wrapper);
+
+    // ── ROW 2: Company | From Date | To Date ─────────────────────────────────
+
+    let company = page.add_field({
+        label: 'Company',
+        fieldtype: 'Link',
+        fieldname: 'company',
+        options: 'Company',
+        reqd: 1,
+        default: frappe.defaults.get_default('company'),
+    });
     company.$wrapper.removeClass('col-md-2').addClass('col-md-4');
 
     let fromDate = page.add_field({
-	    label: 'From Date',
-	    fieldtype: 'Date',
-	    fieldname: 'from_date',
-	    reqd: 1,
+        label: 'From Date',
+        fieldtype: 'Date',
+        fieldname: 'from_date',
+        reqd: 1,
         default: frappe.datetime.get_today()
-	});
+    });
     fromDate.$wrapper.removeClass('col-md-2').addClass('col-md-4');
 
-    // Bind a manual change event to the input field
-    fromDate.$input.on('change', function() {
-        // Check if the field is empty
+    fromDate.$input.on('change', function () {
         if (!fromDate.get_value()) {
             fromDate.value = '';
             fromDate.$wrapper.addClass('has-error');
         }
     });
 
-	let toDate = page.add_field({
-	    label: 'To Date',
-	    fieldtype: 'Date',
-	    fieldname: 'to_date',
-	    default: frappe.datetime.get_today()
-	});
+    let toDate = page.add_field({
+        label: 'To Date',
+        fieldtype: 'Date',
+        fieldname: 'to_date',
+        default: frappe.datetime.get_today()
+    });
     toDate.$wrapper.removeClass('col-md-2').addClass('col-md-4');
 
-    // Bind a manual change event to the input field
-    toDate.$input.on('change', function() {
-        // Check if the field is empty
+    toDate.$input.on('change', function () {
         if (!toDate.get_value()) {
             toDate.value = '';
         }
     });
 
-	let partyTypeField = page.add_field({
-	    label: 'Party Type',
-	    fieldtype: 'Link',
-	    fieldname: 'party_type',
-	    options: 'Party Type',
-	    reqd: 1,
-	    get_query: function() {
-	        return {
-	            filters: {
-	                name: ['in', Object.keys(frappe.boot.party_account_types)],
-	            }
-	        }
-	    },
-	    change() {
-	        let partyField;
-	        let partyGroupField;
+    // Force a row break after Company / From Date / To Date
+    $('<div class="col-md-12" style="padding:0;margin:0;"></div>').insertAfter(toDate.$wrapper);
+
+    // ── ROW 3: Party Type ─────────────────────────────────────────────────────
+
+    let partyTypeField = page.add_field({
+        label: 'Party Type',
+        fieldtype: 'Link',
+        fieldname: 'party_type',
+        options: 'Party Type',
+        reqd: 1,
+        get_query: function () {
+            return {
+                filters: {
+                    name: ['in', Object.keys(frappe.boot.party_account_types)],
+                }
+            }
+        },
+        change() {
+            let partyField;
+            let partyGroupField;
+
             if (!partyTypeField.get_value()) {
-                partyField = page.fields_dict['party']
-                partyGroupField = page.fields_dict['party_group']
+                partyField = page.fields_dict['party'];
+                partyGroupField = page.fields_dict['party_group'];
                 if (partyGroupField) {
                     partyGroupField.set_value('');
                     partyGroupField.$wrapper.hide();
@@ -133,8 +158,10 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
                     partyField.$wrapper.hide();
                 }
             } else {
-                partyField = page.fields_dict['party']
-                partyGroupField = page.fields_dict['party_group']
+                partyField = page.fields_dict['party'];
+                partyGroupField = page.fields_dict['party_group'];
+
+                // ── ROW 4: Party Group | Party ────────────────────────────────
                 if (!partyGroupField) {
                     partyGroupField = page.add_field({
                         label: 'Party Group',
@@ -143,49 +170,51 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
                     });
                     partyGroupField.$wrapper.removeClass('col-md-2').addClass('col-md-4');
                 }
+
                 if (!partyField) {
                     partyField = page.add_field({
                         label: 'Party',
                         fieldtype: 'Link',
                         fieldname: 'party'
                     });
-                }
                     partyField.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+                }
+
                 if (partyGroupField) {
                     partyGroupField.set_value('');
                     partyGroupField.$wrapper.show();
                     partyGroupField.df.options = partyTypeField.get_value() + ' Group';
                 }
+
                 if (partyField) {
                     partyField.set_value('');
                     partyField.$wrapper.show();
                     partyField.df.options = partyTypeField.get_value();
                     partyField.df.get_query = () => {
-                        var field = (partyGroupField.df.options == 'Customer Group') ? 'customer_group' :
-                        'supplier_group'
+                        var field = (partyGroupField.df.options == 'Customer Group')
+                            ? 'customer_group'
+                            : 'supplier_group';
                         if (partyTypeField.get_value() == 'Customer') {
-                            var filters = {is_farmer:0}
+                            var filters = { is_farmer: 0 };
                             if (partyGroupField.get_value()) {
-                                filters[field] = partyGroupField.get_value()
+                                filters[field] = partyGroupField.get_value();
                             }
-                            return {
-                                filters: filters
-                            }
+                            return { filters: filters };
                         } else {
-                            var filters = {}
+                            var filters = {};
                             if (partyGroupField.get_value()) {
-                                filters[field] = partyGroupField.get_value()
+                                filters[field] = partyGroupField.get_value();
                             }
-                            return {
-                                filters: filters
-                            }
+                            return { filters: filters };
                         }
-                    }
+                    };
                 }
             }
-	    }
-	});
+        }
+    });
     partyTypeField.$wrapper.removeClass('col-md-2').addClass('col-md-4');
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     function get_data(filters) {
         frappe.dom.freeze('Processing...');
@@ -196,9 +225,7 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
         validateMandatoryFilters(final_filters);
         frappe.call({
             method: 'agricultural_marketing.agricultural_marketing.page.collection_form.collection_form.execute',
-            args : {
-                filters: final_filters
-            },
+            args: { filters: final_filters },
             callback: function (r) {
                 if (r.message.file_url) {
                     downloadFiles(r.message.file_url);
@@ -206,7 +233,7 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
                 } else if (r.message.error) {
                     frappe.dom.unfreeze();
                     frappe.throw({
-                        title : __("No Data"),
+                        title: __("No Data"),
                         indicator: "blue",
                         message: __(r.message.error)
                     });
@@ -214,7 +241,6 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
             },
         });
     }
-
 
     function open_pdf(filters) {
         frappe.dom.freeze('Processing...');
@@ -226,9 +252,7 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
         validateMandatoryFilters(final_filters);
         frappe.call({
             method: 'agricultural_marketing.agricultural_marketing.page.collection_form.collection_form.execute',
-            args : {
-                filters: final_filters
-            },
+            args: { filters: final_filters },
             callback: function (r) {
                 if (r.message.file_url) {
                     frappe.dom.unfreeze();
@@ -236,7 +260,7 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
                 } else if (r.message.error) {
                     frappe.dom.unfreeze();
                     frappe.throw({
-                        title : __("No Data"),
+                        title: __("No Data"),
                         indicator: "blue",
                         message: __(r.message.error)
                     });
@@ -246,43 +270,49 @@ frappe.pages['collection-form'].on_page_load = function(wrapper) {
     }
 
     async function downloadFiles(file_url) {
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
             open_url_post(frappe.request.url, {
                 cmd: 'frappe.core.doctype.file.file.download_file',
                 file_url: file_url,
             });
-            setTimeout(resolve, 2000);  // Wait for 2 second before downloading the next file
+            setTimeout(resolve, 2000);
         });
     }
 
     function validateMandatoryFilters(filters) {
-        error = [];
+        let error = [];
         if (!filters['company']) {
             frappe.dom.unfreeze();
-            error.push(__('Company'))
+            error.push(__('Company'));
         }
         if (!filters['from_date']) {
             frappe.dom.unfreeze();
-            error.push(__('From Date'))
+            error.push(__('From Date'));
         }
         if (!filters['party_type']) {
             frappe.dom.unfreeze();
-            error.push(__('Party Type'))
+            error.push(__('Party Type'));
+        }
+        if (!filters['include_sales'] && !filters['include_payments']) {
+            frappe.dom.unfreeze();
+            frappe.throw({
+                title: __('Missing Filters'),
+                message: __('Select at least one of Include Sales or Include Payments')
+            });
         }
         if (error.length) {
             frappe.throw({
                 title: __('Missing Filters'),
                 message: __('Missing Filters') + '<br><ul><li>' + error.join('</li><li>') + '</ul>'
-            })
+            });
         }
     }
-    let $btn = page.set_primary_action( __('Generate Collection Form'), () => { get_data(page.fields_dict) });
-    let $btnPDF = page.set_secondary_action( __('Open PDF'), () => { open_pdf(page.fields_dict) });
 
-}
+    page.set_primary_action(__('Generate Collection Form'), () => { get_data(page.fields_dict); });
+    page.set_secondary_action(__('Open PDF'), () => { open_pdf(page.fields_dict); });
+};
 
-frappe.pages['collection-form'].on_page_show = function(wrapper) {
-    // Always reset date fields to today when the page is shown
+frappe.pages['collection-form'].on_page_show = function (wrapper) {
     var page = wrapper.page;
     if (page && page.fields_dict) {
         if (page.fields_dict.from_date) {

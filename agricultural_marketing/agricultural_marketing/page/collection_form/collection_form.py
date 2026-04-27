@@ -19,6 +19,7 @@ def execute(filters):
     file_urls = []
     if isinstance(filters, str):
         filters = json.loads(filters)
+    filters = normalize_filters(filters)
 
     # Get Data
     data = get_data(data, filters)
@@ -75,9 +76,32 @@ def execute(filters):
     }
 
 
+def normalize_filters(filters):
+    checkbox_defaults = {
+        "new_layout": 0,
+        "consider_draft": 0,
+        "consider_draft_payments": 0,
+        "ignore_zero_transactions": 0,
+        "hide_decimal": 0,
+        "include_sales": 1,
+        "include_payments": 1,
+    }
+
+    for fieldname, default in checkbox_defaults.items():
+        value = filters.get(fieldname, default)
+        if value in (None, ""):
+            value = default
+        filters[fieldname] = cint(value)
+
+    if not filters.get("include_sales") and not filters.get("include_payments"):
+        frappe.throw(_("Select at least one of Include Sales or Include Payments"))
+
+    return filters
+
+
 def get_data(data, filters):
-    invoices_details = get_items_details(filters)
-    payments_details = get_payments_details(filters)
+    invoices_details = get_items_details(filters) if filters.get("include_sales") else []
+    payments_details = get_payments_details(filters) if filters.get("include_payments") else []
     process_result(invoices_details, payments_details, data)
     data = get_party_summary(filters=filters, party_type=filters.get("party_type"), data=data)
     return data
@@ -159,13 +183,73 @@ def get_payments_details(filters):
     if filters.get("consider_draft_payments"):
         drafts_result = get_payments_details_drafts(filters)
         result += drafts_result
+
+    if not result:
+        for party in parties:
+            result.append({"party": party})
+    else:
+        parties_with_data = [res['party'] for res in result]
+        for party in parties:
+            if party not in parties_with_data:
+                result.append({"party": party})
     return result
+
+
+def get_combined_opening_totals(filters, party):
+    debit, credit = 0, 0
+    gl_filters = {
+        "party_type": filters.get("party_type"),
+        "party": party,
+        "from_date": filters.get("from_date")
+    }
+
+    q = """ 
+            SELECT 
+                name, debit, credit, posting_date
+            FROM 
+                `tabGL Entry`
+            WHERE 
+                party_type=%(party_type)s 
+            AND 
+                party=%(party)s 
+            AND 
+                is_cancelled = 0
+            AND 
+            (posting_date < %(from_date)s OR is_opening = 'Yes')
+        """
+
+    gl_entries = frappe.db.sql(q, gl_filters, as_dict=True)
+
+    for gl in gl_entries:
+        debit += gl.debit
+        credit += gl.credit
+
+    if filters.get("consider_draft"):
+        total_items = get_draft_total_items(filters, party) or 0
+        total_payments = get_draft_total_payments(filters, party) or 0
+        if filters.get("party_type") == "Supplier":
+            total_draft_commission = get_draft_total_commission(filters, party) or 0
+            debit += total_payments + total_draft_commission
+            credit += total_items
+        else:
+            debit += total_items
+            credit += total_payments
+
+    return debit, credit
+
+
+def get_opening_balance_columns(filters, party):
+    debit, credit = get_combined_opening_totals(filters, party)
+    balance = debit - credit
+    if balance > 0:
+        return flt(balance, 2), 0
+    if balance < 0:
+        return 0, flt(abs(balance), 2)
+    return 0, 0
 
 
 def get_party_summary(filters, party_type, data):
     def append_summary(doctype, reference_id, date, qty, price, statement, debit, credit, reference_number):
-        nonlocal last_balance
-        
         # For Invoice Form - swap columns for customer only
         if doctype == "Invoice Form" and party_type == "Customer":
             # Swap debit and credit for customers
@@ -198,56 +282,9 @@ def get_party_summary(filters, party_type, data):
     final_data = {}
     hide_decimal = True if filters.get("hide_decimal") else False
     switch_columns = True if party_type == "Customer" else False
-    from_date = filters.get('from_date')
     for party, party_data in data.items():
-        debit, credit, last_balance = 0, 0, 0
         total_debit, total_credit = 0, 0
-        gl_filters = {
-            "party_type": filters.get("party_type"),
-            "party": party,
-            "from_date": from_date
-        }
-
-        q = """ 
-                SELECT 
-                    name, debit, credit, posting_date
-                FROM 
-                    `tabGL Entry`
-                WHERE 
-                    party_type=%(party_type)s 
-                AND 
-                    party=%(party)s 
-                AND 
-                    is_cancelled = 0
-                AND 
-                (posting_date < %(from_date)s OR is_opening = 'Yes')
-            """
-
-        gl_entries = frappe.db.sql(q, gl_filters, as_dict=True)
-
-        for gl in gl_entries:
-            debit += gl.debit
-            credit += gl.credit
-
-        # GET total items and payments before from date
-        if filters.get("consider_draft"):
-            total_items = get_draft_total_items(filters, party) or 0
-            total_payments = get_draft_total_payments(filters, party) or 0
-            if filters.get("party_type") == "Supplier":
-                total_draft_commission = get_draft_total_commission(filters, party) or 0
-                debit += total_payments + total_draft_commission
-                credit += total_items
-            else:
-                debit += total_items
-                credit += total_payments
-
-        last_balance = debit - credit
-        if abs(debit) > abs(credit):
-            debit = abs(last_balance)
-            credit = 0
-        else:
-            credit = abs(last_balance)
-            debit = 0
+        opening_debit, opening_credit = get_opening_balance_columns(filters, party)
 
         # Append Opening
         final_data.setdefault(party, []).append({
@@ -256,8 +293,8 @@ def get_party_summary(filters, party_type, data):
             "qty": "",
             "price": "",
             "statement": "",
-            "debit": flt(debit, 2) or "0",
-            "credit": flt(credit, 2) or "0"
+            "debit": flt(opening_debit, 2) or "0",
+            "credit": flt(opening_credit, 2) or "0"
         })
         
         for d in party_data:
@@ -296,8 +333,8 @@ def get_party_summary(filters, party_type, data):
                     total_debit += abs(flt(d.paid_amount, 2))
 
         # Calculate and append closing
-        total_debit += debit
-        total_credit += credit
+        total_debit += opening_debit
+        total_credit += opening_credit
 
         # ONLY for customer, swap the display of debit and credit in the totals row
         if switch_columns:
@@ -419,7 +456,7 @@ def get_tax_rate():
     return tax_rate
 
 
-def get_draft_total_items(filters, party):
+def get_total_items_before_date(filters, party, docstatus):
     invform = frappe.qb.DocType("Invoice Form")
     invformitem = frappe.qb.DocType("Invoice Form Item")
     items_query = frappe.qb.from_(invform).left_join(invformitem).on(
@@ -429,7 +466,9 @@ def get_draft_total_items(filters, party):
     _field = invformitem.customer if filters.get("party_type") == "Customer" else invform.supplier
     items_query = items_query.where(_field == party)
 
-    items_query = items_query.where(invform.docstatus == 0).where(invform.posting_date.lt(filters.get("from_date")))
+    items_query = items_query.where(invform.docstatus == docstatus).where(
+        invform.posting_date.lt(filters.get("from_date"))
+    )
 
     # Select relative fields based on party type
     result = items_query.select(Sum(invformitem.total).as_("total")).run(as_dict=True)
@@ -439,10 +478,18 @@ def get_draft_total_items(filters, party):
     return total_items
 
 
-def get_draft_total_commission(filters, party):
+def get_submitted_total_items(filters, party):
+    return get_total_items_before_date(filters, party, 1)
+
+
+def get_draft_total_items(filters, party):
+    return get_total_items_before_date(filters, party, 0)
+
+
+def get_total_commission_before_date(filters, party, docstatus):
     invform = frappe.qb.DocType("Invoice Form")
     result = frappe.qb.from_(invform).where(invform.company == filters.get('company')).where(
-        invform.supplier == party).where(invform.docstatus == 0).where(
+        invform.supplier == party).where(invform.docstatus == docstatus).where(
         invform.posting_date.lt(filters.get("from_date"))).select(
         Sum(invform.total_commissions_and_taxes).as_("commission")).run(
         as_dict=True)
@@ -452,39 +499,61 @@ def get_draft_total_commission(filters, party):
     return total_commission
 
 
-def get_draft_total_payments(filters, party):
+def get_submitted_total_commission(filters, party):
+    return get_total_commission_before_date(filters, party, 1)
+
+
+def get_draft_total_commission(filters, party):
+    return get_total_commission_before_date(filters, party, 0)
+
+
+def get_signed_payment_amount(filters, payment_type, amount):
+    amount = flt(amount, 2)
+
+    if filters.get("party_type") == "Supplier":
+        if payment_type == "Pay":
+            return amount
+        if payment_type == "Receive":
+            return amount * -1
+        return amount
+
+    if payment_type == "Receive":
+        return amount
+    if payment_type == "Pay":
+        return amount * -1
+    return amount
+
+
+def get_payment_total_before_date(filters, party, docstatus):
     entry = frappe.qb.DocType("Payment Entry")
-    payments_query = frappe.qb.from_(entry).where(
+    result = frappe.qb.from_(entry).where(
         entry.company == filters.get('company')).where(
         entry.party == party).where(
         entry.posting_date.lt(filters.get("from_date"))).where(
-        entry.docstatus == 0
+        entry.docstatus == docstatus
+    ).select(
+        entry.payment_type,
+        entry.paid_amount
+    ).run(as_dict=True)
+
+    total_paid_amount = sum(
+        get_signed_payment_amount(filters, row.payment_type, row.paid_amount)
+        for row in result
     )
 
-    payments_query = payments_query.select(entry.payment_type)
-
-    # Conditionally select paid amount based on party type and payment type
-    if filters.get("party_type") == "Supplier":
-        payments_query = payments_query.select(
-            Case().when(entry.payment_type == "Pay", Sum(entry.paid_amount)).
-            when(entry.payment_type == "Receive", (Sum(entry.paid_amount * -1))).
-            else_(Sum(entry.paid_amount)).as_("paid_amount")
-        )
-    elif filters.get("party_type") == "Customer":
-        payments_query = payments_query.select(
-            Case().when(entry.payment_type == "Receive", Sum(entry.paid_amount)).
-            when(entry.payment_type == "Pay", (Sum(entry.paid_amount * -1))).
-            else_(Sum(entry.paid_amount)).as_("paid_amount")
-        )
-
-    result = payments_query.run(as_dict=True)
-
-    total_paid_amount = sum([re["paid_amount"] for re in result if re["paid_amount"]]) or 0
-
-    ## for drafts of payments from receipts totals 
-    if filters.get("consider_draft_payments"):
+    if docstatus == 0 and filters.get("consider_draft_payments"):
         total_draft_payments = get_draft_total_payments_from_receipts(filters, party)
         total_paid_amount += total_draft_payments
+
+    return total_paid_amount
+
+
+def get_submitted_total_payments(filters, party):
+    return get_payment_total_before_date(filters, party, 1)
+
+
+def get_draft_total_payments(filters, party):
+    total_paid_amount = get_payment_total_before_date(filters, party, 0)
     return total_paid_amount
 
 
