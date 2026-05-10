@@ -5,7 +5,10 @@
 <h2 class="text-center">{%= __(report.report_name) %}</h2>
 <div class="row" style="display: flex; justify-content: space-between;">
   <div class="col-xs-4" style="display: flex; justify-content: flex-start;">
-    <h5 class="text-center"> {% if filters.supplier %} {%= __("Supplier")%} {%= filters.supplier %} {% endif %}
+    <h5 class="text-center"> 
+      {% if (company.supplier) { %} 
+        {%= __("Supplier")%}: {%= company.supplier %} - {%= company.supplier_name %} 
+      {% } %}
     </h5>
   </div>
   <div class="col-xs-4" style="display: flex; justify-content: flex-end;">

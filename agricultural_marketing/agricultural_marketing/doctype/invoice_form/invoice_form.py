@@ -166,39 +166,6 @@ class InvoiceForm(Document):
         self._repost_gl_entries(from_manual=True)
         return True
 
-@frappe.whitelist()
-@frappe.validate_and_sanitize_search_inputs
-def get_filtered_customers(doctype, txt, searchfield, start, page_len, filters):
-    """
-    Returns filtered customers based on the following criteria:
-    1. Must be a customer (is_customer = 1)
-    2. Must not be frozen (is_frozen = 0)
-    3. If couple_customer is checked, they must have a related supplier
-    """
-    # Base query for customers
-    query = """
-        SELECT name, customer_name 
-        FROM `tabCustomer` 
-        WHERE is_customer = 1 
-        AND is_frozen = 0
-        AND (name LIKE %(txt)s OR customer_name LIKE %(txt)s)
-        AND (
-            couple_customer = 0 
-            OR EXISTS (
-                SELECT 1 FROM `tabSupplier` 
-                WHERE related_customer = `tabCustomer`.name
-            )
-        )
-        ORDER BY name ASC
-        LIMIT %(start)s, %(page_len)s
-    """
-    
-    return frappe.db.sql(query, {
-        "txt": "%%%s%%" % txt,
-        "start": start,
-        "page_len": page_len
-    })
-
     def on_trash(self):
         # delete gl entries on deletion of transaction
         if frappe.db.get_single_value("Accounts Settings", "delete_linked_ledger_entries"):
@@ -3749,3 +3716,36 @@ def get_returned_quantity_for_specific_line(original_invoice_name, original_item
     """, values)
     
     return float(result[0][0] if result else 0)
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_filtered_customers(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Returns filtered customers based on the following criteria:
+    1. Must be a customer (is_customer = 1)
+    2. Must not be frozen (is_frozen = 0)
+    3. If couple_customer is checked, they must have a related supplier
+    """
+    # Base query for customers
+    query = """
+        SELECT name, customer_name 
+        FROM `tabCustomer` 
+        WHERE is_customer = 1 
+        AND is_frozen = 0
+        AND (name LIKE %(txt)s OR customer_name LIKE %(txt)s)
+        AND (
+            couple_customer = 0 
+            OR EXISTS (
+                SELECT 1 FROM `tabSupplier` 
+                WHERE related_customer = `tabCustomer`.name
+            )
+        )
+        ORDER BY name ASC
+        LIMIT %(start)s, %(page_len)s
+    """
+    
+    return frappe.db.sql(query, {
+        "txt": "%%%s%%" % txt,
+        "start": start,
+        "page_len": page_len
+    })

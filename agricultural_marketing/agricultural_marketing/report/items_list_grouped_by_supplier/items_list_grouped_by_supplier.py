@@ -51,6 +51,11 @@ def execute(filters=None):
 
     company_defaults = frappe.get_doc("Company", filters.get("company")).as_dict()
     company_defaults["address"] = get_company_address(company_defaults['name']).get("company_address_display")
+    
+    if filters.get("supplier"):
+        company_defaults["supplier_name"] = frappe.db.get_value("Supplier", filters.get("supplier"), "supplier_name")
+        company_defaults["supplier"] = filters.get("supplier")
+
     data.append(company_defaults)
     return columns, data
 
