@@ -39,13 +39,20 @@ class BulkInvoiceForm(Document):
         for i in self.items:
             if not i.reference_invoice_form:
                 frappe.throw(_('You Should Create Invoice Form For All Rows'))
+            
+            # Pre-check for couple customer supplier link
+            couple_customer = frappe.db.get_value('Customer', i.customer, 'couple_customer')
+            if couple_customer:
+                couple_supplier = frappe.db.get_value('Supplier', {'related_customer': i.customer}, 'name')
+                if not couple_supplier:
+                    frappe.throw(_("Related Supplier not found for customer {0} (Row {1})").format(i.customer, i.idx))
 
     def handle_item_changes(self, old_doc):
         """Detect and handle changes in items table"""
         # Create dictionaries for easy lookup
         old_items = {item.name: item for item in old_doc.items}
         current_items = {item.name: item for item in self.items}
-        
+
         # Track which items were deleted
         deleted_items = []
         for old_item_name in old_items:
@@ -322,9 +329,6 @@ class BulkInvoiceForm(Document):
     
     def submit_related_invoice_forms(self):
         """Submit all invoice forms generated from this bulk invoice"""
-        submitted_forms = []
-        failed_forms = []
-        
         # Get all unique invoice forms referenced by items
         invoice_form_names = set()
         for item in self.items:
@@ -332,29 +336,13 @@ class BulkInvoiceForm(Document):
                 invoice_form_names.add(item.reference_invoice_form)
         
         for invoice_form_name in invoice_form_names:
-            try:
-                invoice_form = frappe.get_doc("Invoice Form", invoice_form_name)
-                
-                # Only submit if not already submitted
-                if invoice_form.docstatus == 0:
-                    invoice_form.submit()
-                    submitted_forms.append(invoice_form_name)
-                    frappe.log_error(message=f"Submitted Invoice Form: {invoice_form_name}", title="Bulk Invoice Submission")
-                
-            except Exception as e:
-                failed_forms.append(invoice_form_name)
-                frappe.log_error(message=f"Failed to submit Invoice Form {invoice_form_name}: {str(e)}", title="Submission Error")
-        
-        # Show results
-        if submitted_forms:
-            frappe.msgprint(_("Successfully submitted {0} Invoice Forms: {1}").format(
-                len(submitted_forms), ", ".join(submitted_forms)
-            ))
-        
-        if failed_forms:
-            frappe.msgprint(_("Failed to submit {0} Invoice Forms: {1}").format(
-                len(failed_forms), ", ".join(failed_forms)
-            ), indicator="red")
+            invoice_form = frappe.get_doc("Invoice Form", invoice_form_name)
+            
+            # Only submit if not already submitted
+            if invoice_form.docstatus == 0:
+                invoice_form.submit()
+                frappe.log_error(message=f"Submitted Invoice Form: {invoice_form_name}", title="Bulk Invoice Submission")
+
     
     def on_cancel(self):
         """Handle cancellation - cancel all related invoice forms"""
@@ -362,9 +350,6 @@ class BulkInvoiceForm(Document):
     
     def cancel_related_invoice_forms(self):
         """Cancel all invoice forms generated from this bulk invoice"""
-        cancelled_forms = []
-        failed_forms = []
-        
         # Get all unique invoice forms referenced by items
         invoice_form_names = set()
         for item in self.items:
@@ -372,29 +357,13 @@ class BulkInvoiceForm(Document):
                 invoice_form_names.add(item.reference_invoice_form)
         
         for invoice_form_name in invoice_form_names:
-            try:
-                invoice_form = frappe.get_doc("Invoice Form", invoice_form_name)
-                
-                # Only cancel if submitted
-                if invoice_form.docstatus == 1:
-                    invoice_form.cancel()
-                    cancelled_forms.append(invoice_form_name)
-                    frappe.log_error(message=f"Cancelled Invoice Form: {invoice_form_name}", title="Bulk Invoice Cancellation")
-                
-            except Exception as e:
-                failed_forms.append(invoice_form_name)
-                frappe.log_error(message=f"Failed to cancel Invoice Form {invoice_form_name}: {str(e)}", title="Cancellation Error")
-        
-        # Show results
-        if cancelled_forms:
-            frappe.msgprint(_("Successfully cancelled {0} Invoice Forms: {1}").format(
-                len(cancelled_forms), ", ".join(cancelled_forms)
-            ))
-        
-        if failed_forms:
-            frappe.msgprint(_("Failed to cancel {0} Invoice Forms: {1}").format(
-                len(failed_forms), ", ".join(failed_forms)
-            ), indicator="red")
+            invoice_form = frappe.get_doc("Invoice Form", invoice_form_name)
+            
+            # Only cancel if submitted
+            if invoice_form.docstatus == 1:
+                invoice_form.cancel()
+                frappe.log_error(message=f"Cancelled Invoice Form: {invoice_form_name}", title="Bulk Invoice Cancellation")
+
     
     @frappe.whitelist()
     def create_invoice_forms(self):
@@ -883,4 +852,37 @@ def create_bulk_invoice_from_items(items_data, company, posting_date=None):
     
     bulk_invoice.insert(ignore_permissions=True)
     return bulk_invoice.name
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_filtered_customers(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Returns filtered customers based on the following criteria:
+    1. Must be a customer (is_customer = 1)
+    2. Must not be frozen (is_frozen = 0)
+    3. If couple_customer is checked, they must have a related supplier
+    """
+    # Base query for customers
+    query = """
+        SELECT name, customer_name 
+        FROM `tabCustomer` 
+        WHERE is_customer = 1 
+        AND is_frozen = 0
+        AND (name LIKE %(txt)s OR customer_name LIKE %(txt)s)
+        AND (
+            couple_customer = 0 
+            OR EXISTS (
+                SELECT 1 FROM `tabSupplier` 
+                WHERE related_customer = `tabCustomer`.name
+            )
+        )
+        ORDER BY name ASC
+        LIMIT %(start)s, %(page_len)s
+    """
+    
+    return frappe.db.sql(query, {
+        "txt": "%%%s%%" % txt,
+        "start": start,
+        "page_len": page_len
+    })
 

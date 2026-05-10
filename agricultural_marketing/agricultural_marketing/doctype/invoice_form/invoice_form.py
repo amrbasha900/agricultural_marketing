@@ -129,15 +129,19 @@ class InvoiceForm(Document):
                 return True
         return False
 
-    def _repost_gl_entries(self):
+    def _repost_gl_entries(self, from_manual=False):
         """
         Cancel existing GL entries and recreate them with the updated customer.
         Follows the same pattern as ERPNext Repost Accounting Ledger:
         1. Mark old GL entries as cancelled and create reversal entries
         2. Recreate GL entries from the current document state
         """
+        # Check if there are any active GL entries to cancel first
+        has_gl_entries = frappe.db.exists("GL Entry", {"voucher_type": self.doctype, "voucher_no": self.name, "is_cancelled": 0})
+        
         # Step 1: Cancel old GL entries (mark as cancelled + create reversal entries)
-        self.make_gl_entries_on_cancel()
+        if has_gl_entries:
+            self.make_gl_entries_on_cancel()
 
         # Step 2: Recreate GL entries with updated customer data
         if self.is_return:
@@ -145,11 +149,55 @@ class InvoiceForm(Document):
         else:
             self.make_gl_entries()
 
-        frappe.msgprint(
-            _("GL Entries have been reposted due to customer change in items."),
-            indicator="green",
-            alert=True,
+        if from_manual:
+            frappe.msgprint(_("GL Entries have been created/reposted successfully."), indicator="green", alert=True)
+        else:
+            frappe.msgprint(
+                _("GL Entries have been reposted due to customer change in items."),
+                indicator="green",
+                alert=True,
+            )
+
+    @frappe.whitelist()
+    def manual_repost(self):
+        if frappe.session.user != "Administrator":
+            frappe.throw(_("Only Administrator can repost GL entries."))
+
+        self._repost_gl_entries(from_manual=True)
+        return True
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_filtered_customers(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Returns filtered customers based on the following criteria:
+    1. Must be a customer (is_customer = 1)
+    2. Must not be frozen (is_frozen = 0)
+    3. If couple_customer is checked, they must have a related supplier
+    """
+    # Base query for customers
+    query = """
+        SELECT name, customer_name 
+        FROM `tabCustomer` 
+        WHERE is_customer = 1 
+        AND is_frozen = 0
+        AND (name LIKE %(txt)s OR customer_name LIKE %(txt)s)
+        AND (
+            couple_customer = 0 
+            OR EXISTS (
+                SELECT 1 FROM `tabSupplier` 
+                WHERE related_customer = `tabCustomer`.name
+            )
         )
+        ORDER BY name ASC
+        LIMIT %(start)s, %(page_len)s
+    """
+    
+    return frappe.db.sql(query, {
+        "txt": "%%%s%%" % txt,
+        "start": start,
+        "page_len": page_len
+    })
 
     def on_trash(self):
         # delete gl entries on deletion of transaction
@@ -416,7 +464,8 @@ class InvoiceForm(Document):
         for it in self.items:
             if it.couple_customer:
                 couple_supplier = frappe.db.get_value('Supplier',{'related_customer': it.customer}, 'name')
-                
+                if not couple_supplier:
+                    frappe.throw(_("Related Supplier not found for customer {0}".format(it.customer)))
                 if couple_supplier in customers:
                     customer_record = [d for d in gl_entries if d.get("party") == couple_supplier][0]
                     customer_record.update({
@@ -790,6 +839,10 @@ class InvoiceForm(Document):
             if it.couple_customer:
                 couple_supplier = frappe.db.get_value('Supplier', {'related_customer': it.customer}, 'name')
                 
+                if not couple_supplier:
+                    frappe.throw(_("Related Supplier not found for customer {0}".format(it.customer)))
+                    raise Exception("Related Supplier not found for customer {0}".format(it.customer))
+
                 if couple_supplier in customers:
                     customer_record = [d for d in gl_entries if d.get("party") == couple_supplier][0]
                     customer_record.update({

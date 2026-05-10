@@ -375,12 +375,9 @@ function setup_filters(frm) {
     });
     
     // Filter for default customer
-    frm.set_query("default_customer", function() {
+    frm.set_query("default_customer", function () {
         return {
-            filters: {
-                is_customer: 1,
-                is_frozen: 0
-            }
+            query: "agricultural_marketing.agricultural_marketing.doctype.bulk_invoice_form.bulk_invoice_form.get_filtered_customers",
         };
     });
     
@@ -415,12 +412,9 @@ function setup_child_table_filters(frm) {
     
     // Customer filter
     if (frm.fields_dict['items'].grid.get_field("customer")) {
-        frm.fields_dict['items'].grid.get_field("customer").get_query = function() {
+        frm.fields_dict['items'].grid.get_field("customer").get_query = function () {
             return {
-                filters: {
-                    is_customer: 1,
-                    is_frozen: 0
-                }
+                query: "agricultural_marketing.agricultural_marketing.doctype.bulk_invoice_form.bulk_invoice_form.get_filtered_customers",
             };
         };
     }

@@ -125,6 +125,7 @@ doctype_js = {"Payments and Receipts" : "public/js/payments_and_receipts.js"}
 doc_events = {
     "Supplier": {
         "after_insert": "agricultural_marketing.standard_doctypes.supplier.create_related_customer",
+        "validate": "agricultural_marketing.standard_doctypes.supplier.create_related_customer",
         "on_trash": "agricultural_marketing.standard_doctypes.supplier.delete_related_customer",
         "on_update": "agricultural_marketing.standard_doctypes.supplier.sync_supplier_to_customer",
         "after_rename": "agricultural_marketing.standard_doctypes.supplier.rename_customer_from_supplier",

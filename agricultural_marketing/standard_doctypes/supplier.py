@@ -4,6 +4,9 @@ import frappe
 def create_related_customer(self, method):
     if not self.is_farmer:
         return
+    
+    if self.related_customer:
+        return
 
     settings = frappe.get_single("Agriculture Settings")
 

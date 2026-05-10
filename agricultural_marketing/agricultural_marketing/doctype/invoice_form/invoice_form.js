@@ -14,6 +14,19 @@ frappe.ui.form.on("Invoice Form", {
         if (frm.doc.docstatus === 1) {
             frm.fields_dict.items.grid.update_docfield_property('customer', 'read_only', 0);
             frm.fields_dict.items.grid.update_docfield_property('couple_customer', 'read_only', 0);
+
+            // Add button to repost GL entries
+            if (frappe.session.user === "Administrator") {
+                frm.add_custom_button(__("Repost GL Entries"), function () {
+                    frappe.confirm(__("Are you sure you want to repost GL entries? This will cancel existing entries and create new ones based on the current data."), function () {
+                        frm.call("manual_repost").then(r => {
+                            if (!r.exc) {
+                                frappe.show_alert({ message: __("GL Entries have been reposted successfully"), indicator: "green" });
+                            }
+                        });
+                    });
+                }, __("Actions"));
+            }
         }
 
         if (frm.doc.docstatus === 1 && !frm.doc.is_return) {
@@ -265,10 +278,7 @@ function filter_basic_info_fields(frm) {
 
     frm.set_query("customer", function () {
         return {
-            filters: {
-                is_customer: 1,
-                is_frozen: 0
-            },
+            query: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.get_filtered_customers",
         };
     });
 
@@ -285,8 +295,8 @@ function filter_basic_info_fields(frm) {
 function filter_child_tables_fields(frm) {
     frm.fields_dict['items'].grid.get_field("customer").get_query = function () {
         return {
-            filters: { "is_customer": 1, "is_frozen": 0 }
-        }
+            query: "agricultural_marketing.agricultural_marketing.doctype.invoice_form.invoice_form.get_filtered_customers",
+        };
     };
     frm.fields_dict['items'].grid.get_field("pamper").get_query = function () {
         return {
@@ -717,14 +727,14 @@ function calculate_grand_total(frm) {
     }
 
     // Add commissions total
-    if (frm.doc.commissions) {
-        frm.doc.commissions.forEach(function (commission) {
-            grand_total += flt(commission.commission_total);
-        });
-    }
+    // if (frm.doc.commissions) {
+    //     frm.doc.commissions.forEach(function (commission) {
+    //         grand_total += flt(commission.commission_total);
+    //     });
+    // }
 
     // Add other totals if needed
-    grand_total += flt(frm.doc.total_commissions_and_taxes);
+    //grand_total += flt(frm.doc.total_commissions_and_taxes);
 
     frm.set_value('grand_total', grand_total);
 }
