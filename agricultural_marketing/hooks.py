@@ -114,9 +114,9 @@ doctype_js = {"Payments and Receipts" : "public/js/payments_and_receipts.js"}
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+    "Customer": "agricultural_marketing.standard_doctypes.customer.AgricultureCustomer",
+}
 
 # Document Events
 # ---------------

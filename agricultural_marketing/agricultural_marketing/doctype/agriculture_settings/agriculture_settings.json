@@ -45,7 +45,8 @@
   "whatsapp_session",
   "enable_auto_cleanup",
   "cleanup_after_days",
-  "show_customer_credit_details"
+  "show_customer_credit_details",
+  "allow_customer_credit_limit_below_outstanding"
  ],
  "fields": [
   {
@@ -284,6 +285,12 @@
    "fieldname": "show_customer_credit_details",
    "fieldtype": "Check",
    "label": "Show Customer Credit Limit Details"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_customer_credit_limit_below_outstanding",
+   "fieldtype": "Check",
+   "label": "Allow Customer Credit Limit Below Outstanding"
   },
   {
    "depends_on": "eval:doc.use_default_customer_in_tax_invoice == 1",
