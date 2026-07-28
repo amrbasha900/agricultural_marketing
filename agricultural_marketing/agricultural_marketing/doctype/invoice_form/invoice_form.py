@@ -9,6 +9,7 @@ from frappe.utils import now
 import copy
 from settings_manager.utils.data import money_in_words
 from frappe.model.naming import make_autoname
+from agricultural_marketing.agricultural_marketing.doctype.invoice_form import supplier_charges
 
 
 class InvoiceForm(Document):
@@ -44,6 +45,7 @@ class InvoiceForm(Document):
 
     def validate(self):
         self.update_grand_total()
+        supplier_charges.calculate_charges(self)
         self.update_customer_commission()
         self.update_commission_and_taxes()
         self.add_pamper_commission()
@@ -77,6 +79,12 @@ class InvoiceForm(Document):
             
 
 
+    def on_update(self):
+        # Keeps this invoice's own row on the shared charge voucher in step. Runs
+        # after the save has succeeded; it never creates a voucher or a row, that is
+        # only done by the "Make Charge Payment" button on the list view.
+        supplier_charges.sync_charge_row(self)
+
     def on_submit(self):
         if self.is_return and not self.return_reason:
             frappe.throw(_("Return Reason is mandatory for return invoices"))
@@ -95,10 +103,14 @@ class InvoiceForm(Document):
     def on_cancel(self):
         self.cancel_commission_invoice()
         self.make_gl_entries_on_cancel()
-        
+
         # NEW: Update returned quantities when return invoice is cancelled
         if self.is_return and self.return_against:
             self.update_original_invoice_returned_quantities()
+
+        # Draft voucher: this invoice's row goes. Submitted voucher: the row stays
+        # and only this invoice's own Payment Entry is cancelled.
+        supplier_charges.detach_charge_row(self)
 
     def on_update_after_submit(self):
         """
@@ -109,6 +121,9 @@ class InvoiceForm(Document):
         needs_repost = self._check_if_customers_updated()
         if needs_repost:
             self._repost_gl_entries()
+
+        # A submitted voucher has frozen rows, so a changed total is only reported.
+        supplier_charges.warn_if_charge_payment_stale(self)
 
     def _check_if_customers_updated(self):
         """
@@ -175,6 +190,8 @@ class InvoiceForm(Document):
                 frappe.delete_doc("GL Entry", gle, for_reload=True)
         # delete commission invoice on deletion of transaction
         self.delete_commission_invoice()
+        # release this invoice's row on the shared charge voucher
+        supplier_charges.detach_charge_row(self)
 
         def validate_return_amounts(self):
             """

@@ -142,6 +142,13 @@ doc_events = {
     },
     "Statement Generation History": {
         "validate": "agricultural_marketing.agricultural_marketing.page.statement_forms.whatsapp_hooks.validate_statement_generation_history"
+    },
+    "Payments and Receipts": {
+        "validate": "agricultural_marketing.agricultural_marketing.doctype.invoice_form.supplier_charges.lock_charge_voucher",
+        "on_trash": [
+            "agricultural_marketing.agricultural_marketing.doctype.invoice_form.supplier_charges.guard_charge_voucher_delete",
+            "agricultural_marketing.agricultural_marketing.doctype.invoice_form.supplier_charges.clear_invoice_links",
+        ]
     }
 }
 
@@ -271,7 +278,9 @@ fixtures = [
         "Item-custom_commission_percentage",
         "Item Group-custom_commission_percentage",
         "Customer-custom_couple_customer",
-        "Item Group-custom_commission_item"
+        "Item Group-custom_commission_item",
+        "Supplier-custom_charge_percentage",
+        "Supplier-custom_apply_charges"
         ]]]},
         {"dt": "Statement Form Template", "filters": [["name", "in", [
         "أساسي","نموذج 2", "نموذج 1","نموذج 3"]]]},

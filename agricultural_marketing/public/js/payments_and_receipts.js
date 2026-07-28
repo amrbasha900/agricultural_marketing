@@ -1,8 +1,40 @@
 // Copyright (c) 2024, Muhammad Salama and contributors
 // For license information, please see license.txt
 
+// A voucher built from Invoice Form supplier charges is owned by its invoices.
+// Every field is shown read-only and the rows are frozen, so the only way to change
+// it is through the invoices themselves. Submitting and cancelling stay available:
+// the accountant still posts the batch. The server enforces this independently in
+// `supplier_charges.lock_charge_voucher` - this is only so the form shows it rather
+// than failing on save.
+function lock_supplier_charge_voucher(frm) {
+    if (!frm.doc.is_supplier_charge) return;
+
+    frm.meta.fields.forEach(df => {
+        if (!["Section Break", "Column Break", "Tab Break"].includes(df.fieldtype)) {
+            frm.set_df_property(df.fieldname, "read_only", 1);
+        }
+    });
+
+    const grid = frm.fields_dict.references && frm.fields_dict.references.grid;
+    if (grid) {
+        grid.cannot_add_rows = true;
+        grid.df.cannot_add_rows = true;
+        grid.df.cannot_delete_rows = true;
+        grid.docfields.forEach(df => (df.read_only = 1));
+        grid.refresh();
+    }
+
+    frm.set_intro(
+        __("Built from Invoice Form supplier charges. Change the invoices to change this voucher."),
+        "blue"
+    );
+}
+
 frappe.ui.form.on("Payments and Receipts", {
     refresh: function(frm) {
+        lock_supplier_charge_voucher(frm);
+
         frm.add_custom_button(__("Print References"), function() {
             // Get references table data
             const references = frm.doc.references || [];

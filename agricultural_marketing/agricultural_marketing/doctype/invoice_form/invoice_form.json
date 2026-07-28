@@ -41,6 +41,11 @@
   "pamper_commissions",
   "section_break_cwcc",
   "grand_total",
+  "apply_charges",
+  "charges_amount",
+  "charges_precentage",
+  "charges_payment",
+  "charge_payment_line",
   "column_break_uajo",
   "total_commissions_and_taxes",
   "pamper_commission",
@@ -314,13 +319,53 @@
    "fieldtype": "Select",
    "label": "Status",
    "options": "Pending"
+  },
+  {
+   "depends_on": "eval:doc.apply_charges",
+   "fieldname": "charges_amount",
+   "fieldtype": "Currency",
+   "label": "Charges Amount",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.apply_charges",
+   "fetch_from": "supplier.charge_percentage",
+   "fieldname": "charges_precentage",
+   "fieldtype": "Percent",
+   "label": "Charges Precentage",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "supplier.apply_charges",
+   "fieldname": "apply_charges",
+   "fieldtype": "Check",
+   "label": "Apply Charges",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.apply_charges",
+   "fieldname": "charges_payment",
+   "fieldtype": "Link",
+   "label": "Charges Payment",
+   "no_copy": 1,
+   "options": "Payments and Receipts",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.apply_charges",
+   "fieldname": "charge_payment_line",
+   "fieldtype": "Data",
+   "label": "Charge Payment Line",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-10 16:33:30.317202",
+ "modified": "2026-07-28 01:25:03.864963",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",

@@ -63,3 +63,20 @@ Taxes, الضرائب
 Ignore Zero Transactions, تخطي الحركات الصفرية
 Balance From, رصيد منه
 Balance To, رصيد له
+Make Charge Payment, عمل سند رسوم
+Charge Payments, سندات الرسوم
+Creating charge payments..., جاري إنشاء سندات الرسوم...
+Created, تم الإنشاء
+Failed, فشل
+Already linked to a charge payment, مرتبطة بسند رسوم بالفعل
+No charges to apply, لا توجد رسوم للتطبيق
+Original invoice has no charge payment to reverse, الفاتورة الأصلية ليس لها سند رسوم لعكسه
+Cancelled invoice, فاتورة ملغاة
+Charge Payment Out of Date, سند الرسوم غير محدّث
+Supplier Charges Mode of Payment, طريقة دفع رسوم الموردين
+rows, أسطر
+Charge Voucher Locked, سند الرسوم مقفل
+Is Supplier Charge, سند رسوم موردين
+Invoice Form, فاتورة الموردين
+Built from Invoice Form supplier charges. Change the invoices to change this voucher., منشأ من رسوم موردين في فواتير الموردين. عدّل الفواتير لتعديل هذا السند.
+Building charge payments for {0} invoices in the background..., جاري إنشاء سندات الرسوم لعدد {0} فاتورة في الخلفية...
