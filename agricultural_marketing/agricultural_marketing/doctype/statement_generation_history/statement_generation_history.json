@@ -21,6 +21,7 @@
   "neglect_items",
   "calculate_opening_balance_with_totals",
   "supplier_statement",
+  "statement_layout_v2",
   "column_break_2",
   "total_parties",
   "completed_count",
@@ -195,6 +196,13 @@
    "fieldname": "supplier_statement",
    "fieldtype": "Check",
    "label": "Supplier Statement"
+  },
+  {
+   "default": "0",
+   "description": "Generated from the Supplier Statement Forms V2 page (unified ledger layout).",
+   "fieldname": "statement_layout_v2",
+   "fieldtype": "Check",
+   "label": "Statement Layout V2"
   }
  ],
  "index_web_pages_for_search": 1,

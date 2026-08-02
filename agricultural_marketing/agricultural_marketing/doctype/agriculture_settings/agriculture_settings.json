@@ -17,6 +17,7 @@
   "supplier_commission_item",
   "commission_based_on",
   "allow_couple_account",
+  "duplicate_last_row_in_bulk_invoice",
   "use_default_customer_in_tax_invoice",
   "default_customer",
   "supplier_charges_mode_of_payment",
@@ -216,6 +217,13 @@
    "fieldname": "allow_couple_account",
    "fieldtype": "Check",
    "label": "Allow Couple Account"
+  },
+  {
+   "default": "1",
+   "description": "When a new row is added in Bulk Invoice Form, copy the item, supplier, customer and pamper from the row above it.",
+   "fieldname": "duplicate_last_row_in_bulk_invoice",
+   "fieldtype": "Check",
+   "label": "Duplicate Last Row in Bulk Invoice"
   },
   {
    "fieldname": "report_pdfs_setting_tab",

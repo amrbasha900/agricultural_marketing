@@ -19,9 +19,16 @@ frappe.ui.form.on("Bulk Invoice Form", {
 
         // Add save button beside add row button
         add_save_button_to_grid(frm);
+
+        // Enter advances to the next field/column instead of Tab
+        setup_enter_as_tab(frm);
     },
     
     onload(frm) {
+        // Fetch it here (not in refresh) so it is cached well before the user
+        // can add a row.
+        load_duplicate_last_row_setting();
+
         // Set up filters on load
         setup_filters(frm);
         if (frm.is_new() && !frm.doc.amended_from && !frm.doc.items.length > 1) {
@@ -70,6 +77,67 @@ frappe.ui.form.on("Bulk Invoice Form", {
         create_invoice_forms(frm);
     }
 });
+
+// ---------------------------------------------------------------------------
+// "Duplicate Last Row in Bulk Invoice" (Agriculture Settings)
+// ---------------------------------------------------------------------------
+//
+// items_add() runs synchronously, so the setting cannot be fetched on demand.
+// It is loaded once per session and cached. Until it arrives we honour the
+// field's own default (enabled), which keeps the long-standing behaviour of
+// this form unchanged.
+
+let duplicate_last_row_setting = 1;
+let duplicate_last_row_request = null;
+
+function load_duplicate_last_row_setting() {
+    if (duplicate_last_row_request) return duplicate_last_row_request;
+
+    duplicate_last_row_request = frappe.db
+        .get_single_value("Agriculture Settings", "duplicate_last_row_in_bulk_invoice")
+        .then((value) => {
+            // A never-saved Single returns null; fall back to the field default.
+            duplicate_last_row_setting = value === null || value === undefined ? 1 : cint(value);
+            return duplicate_last_row_setting;
+        })
+        .catch(() => duplicate_last_row_setting);
+
+    return duplicate_last_row_request;
+}
+
+function duplicate_last_row_enabled() {
+    return Boolean(duplicate_last_row_setting);
+}
+
+// Fields that must NOT travel to the new row.
+//
+// reference_invoice_form / reference_invoice_form_item tie a row to the Invoice
+// Form that was generated from it -- update_item(), remove_item() and the green
+// reference indicator all key off them. Copying those onto a fresh row would
+// make it look already-generated and point the update/delete logic at another
+// row's Invoice Form. last_invoice_sequence is per-row bookkeeping.
+const DUPLICATE_ROW_SKIP_FIELDS = [
+    "reference_invoice_form",
+    "reference_invoice_form_item",
+    "last_invoice_sequence",
+];
+
+// Copy every data field from the row above, so a new row starts as a full copy.
+// Driven by the child doctype's meta, so fields added later are included too.
+function copy_from_previous_row(row, previous_row) {
+    const meta = frappe.get_meta("Bulk Invoice Form Item");
+    const fields = (meta && meta.fields) || [];
+
+    fields.forEach((df) => {
+        if (frappe.model.no_value_type.includes(df.fieldtype)) return;
+        if (DUPLICATE_ROW_SKIP_FIELDS.includes(df.fieldname)) return;
+
+        const value = previous_row[df.fieldname];
+        if (value === undefined || value === null || value === "") return;
+
+        row[df.fieldname] = value;
+    });
+}
 
 function add_save_button_to_grid(frm) {
     if (frm.fields_dict.items && frm.fields_dict.items.grid) {
@@ -122,16 +190,12 @@ frappe.ui.form.on("Bulk Invoice Form Item", {
             row.pamper = frm.doc.default_pamper;
         }
         
-        // Copy item details from previous row if exists
-        if (frm.doc.items && frm.doc.items.length > 1) {
+        // Copy item details from previous row if exists -- controlled by
+        // "Duplicate Last Row in Bulk Invoice" in Agriculture Settings.
+        if (duplicate_last_row_enabled() && frm.doc.items && frm.doc.items.length > 1) {
             let previous_row = frm.doc.items[frm.doc.items.length - 2]; // Get previous row
-            if (previous_row && previous_row.item_code) {
-                row.item_code = previous_row.item_code;
-                row.item_name = previous_row.item_name;
-                // Override with previous row's values if they exist
-                if (previous_row.supplier) row.supplier = previous_row.supplier;
-                if (previous_row.customer) row.customer = previous_row.customer;
-                if (previous_row.pamper) row.pamper = previous_row.pamper;
+            if (previous_row) {
+                copy_from_previous_row(row, previous_row);
             }
         }
         
@@ -730,4 +794,134 @@ function add_reference_indicators(frm) {
             });
         }, 500);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Enter moves to the next field instead of Tab
+// ---------------------------------------------------------------------------
+//
+// Frappe does NOT move the cursor between fields itself -- the browser's native
+// Tab does that. grid_row.js only intercepts Tab on the *last* column of a row
+// (to open or create the next row), and layout.js only acts on elements marked
+// with data-doctype. A synthetic Tab event therefore cannot replace a real one.
+//
+// So: at the end of a grid row we hand the synthetic Tab to Frappe and let it
+// create/open the next row, and everywhere else we move the focus ourselves.
+//
+// Enter keeps its original meaning where it actually matters -- see the guards.
+
+// Inputs a user can actually type into, in visual (DOM) order.
+const ENTER_NAV_FOCUSABLE =
+    "input:visible:enabled:not([readonly]):not([type=hidden]):not([type=checkbox]):not([type=radio])," +
+    "select:visible:enabled,textarea:visible:enabled:not([readonly])";
+
+const ENTER_NAV_MULTILINE_FIELDTYPES = [
+    "Text",
+    "Small Text",
+    "Long Text",
+    "Code",
+    "Text Editor",
+    "HTML Editor",
+    "Markdown Editor",
+    "JSON",
+];
+
+function focus_next_input($scope, current) {
+    const inputs = $scope.find(ENTER_NAV_FOCUSABLE).toArray();
+    const index = inputs.indexOf(current);
+
+    if (index === -1 || index >= inputs.length - 1) return false;
+
+    const next = inputs[index + 1];
+    next.focus();
+    // Select the existing value so typing overwrites it -- these forms are used
+    // for bulk keyboard entry.
+    if (typeof next.select === "function" && next.type !== "date") {
+        next.select();
+    }
+    return true;
+}
+
+// Move on from `$target`, honouring Frappe's own end-of-row behaviour.
+function enter_nav_advance(frm, $target) {
+    const send_tab = () =>
+        $target.trigger(
+            $.Event("keydown", {
+                which: frappe.ui.keyCode.TAB,
+                keyCode: frappe.ui.keyCode.TAB,
+                key: "Tab",
+                shiftKey: false,
+            })
+        );
+
+    const $grid_row = $target.closest(".grid-row");
+
+    if ($grid_row.length) {
+        // Mirrors grid_row.js: on the last column Frappe opens the next row,
+        // or appends one when this is already the last row.
+        const last_input = $grid_row.find("input:enabled:visible").last().get(0);
+        const is_last_column =
+            $target.attr("data-last-input") || last_input === $target.get(0);
+
+        if (is_last_column) {
+            send_tab();
+        } else {
+            focus_next_input($grid_row, $target.get(0));
+        }
+        return;
+    }
+
+    // Plain form field: try Frappe's own tab handling first (it respects
+    // sections, tabs and hidden fields), then fall back to raw DOM order.
+    const before = document.activeElement;
+    send_tab();
+    if (document.activeElement === before) {
+        focus_next_input(frm.$wrapper, $target.get(0));
+    }
+}
+
+function setup_enter_as_tab(frm) {
+    // refresh() fires repeatedly; bind once per form or Enter would jump
+    // several fields at a time.
+    if (frm.__enter_as_tab_bound) return;
+    frm.__enter_as_tab_bound = true;
+
+    frm.$wrapper.on("keydown.enter_as_tab", function (e) {
+        if (e.which !== frappe.ui.keyCode.ENTER) return;
+
+        // Shift/Ctrl/Alt/Meta + Enter keep their normal behaviour
+        // (newlines, Frappe's add-row-with-keys shortcut, ...).
+        if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+
+        const $target = $(e.target);
+
+        // Only plain inputs. Textareas and contenteditable need Enter for newlines,
+        // and buttons/checkboxes need it to activate.
+        if (!$target.is("input:not([type=checkbox]):not([type=radio]), select")) return;
+        if ($target.is(":disabled, [readonly]")) return;
+        if (ENTER_NAV_MULTILINE_FIELDTYPES.includes($target.attr("data-fieldtype"))) return;
+
+        // Never hijack Enter inside a modal -- it belongs to the primary action.
+        if ($target.closest(".modal").length) return;
+
+        // A Link/Select field keeps its suggestion list "open" even while it is
+        // still loading or has come back empty, so testing open/closed alone
+        // would strand the cursor on every Link field. Only a list that really
+        // has something to pick gets to keep Enter -- and even then we move on
+        // by ourselves once the pick has been applied, so one press is enough.
+        const $suggestions = $target.closest(".awesomplete").find("> ul");
+        const list_open = $suggestions.length && $suggestions.attr("hidden") === undefined;
+        const has_options = list_open && $suggestions.children("li").length > 0;
+
+        if (has_options) {
+            $target.one("awesomplete-selectcomplete", function () {
+                // Let the control finish writing the value before moving.
+                setTimeout(() => enter_nav_advance(frm, $target), 0);
+            });
+            return;
+        }
+
+        e.preventDefault();
+        enter_nav_advance(frm, $target);
+    });
 }

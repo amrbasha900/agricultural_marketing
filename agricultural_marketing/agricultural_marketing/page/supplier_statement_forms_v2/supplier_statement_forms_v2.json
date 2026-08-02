@@ -1,0 +1,26 @@
+{
+ "content": null,
+ "creation": "2026-08-01 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-08-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Agricultural Marketing",
+ "name": "supplier-statement-forms-v2",
+ "owner": "Administrator",
+ "page_name": "supplier-statement-forms-v2",
+ "roles": [
+  {
+   "role": "Accounts Manager"
+  },
+  {
+   "role": "التسويق الزراعي متقدم"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Supplier Statement Forms V2"
+}

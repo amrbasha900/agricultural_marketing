@@ -2929,16 +2929,42 @@ def retry_all_queued_pdf_jobs():
                 )
 
             if is_supplier_statement:
-                # Use the supplier-specific PDF generator (supplier_statement_forms.html)
-                from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
-                    generate_single_supplier_pdf,
+                # A supplier statement can be either layout. V2 histories carry
+                # statement_layout_v2=1 and must go to the V2 generator, otherwise
+                # this sweep silently re-renders them with the old four-table
+                # template -- which is what made the last few PDFs of a batch come
+                # out in a different format from the rest.
+                is_layout_v2 = frappe.db.get_value(
+                    "Statement Generation History",
+                    log["statement_generation_history"],
+                    "statement_layout_v2",
                 )
+
+                if is_layout_v2:
+                    from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms_v2.supplier_statement_forms_v2 import (
+                        generate_single_supplier_pdf_v2,
+                    )
+
+                    generator = generate_single_supplier_pdf_v2
+                else:
+                    from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
+                        generate_single_supplier_pdf,
+                    )
+
+                    generator = generate_single_supplier_pdf
+
+                # This sweep runs every minute with no staleness filter, so a log
+                # that legitimately takes a few minutes used to be re-enqueued
+                # once per minute, piling duplicates onto an already busy queue
+                # and delaying the tail of every batch. A stable job_id lets RQ
+                # skip the re-queue while the original job is still alive.
                 frappe.enqueue(
-                    method=generate_single_supplier_pdf,
+                    method=generator,
                     log_id=log["name"],
                     supplier_name=log["party_name"],
                     history_id=log["statement_generation_history"],
-                    job_name=f"PDF-Scheduled-Retry-{log['name']}",
+                    job_id=f"pdf-gen-{log['name']}",
+                    deduplicate=True,
                     timeout=300,
                     is_async=True,
                 )
@@ -2968,9 +2994,25 @@ def retry_all_queued_and_failed_pdf_jobs_for_history(history_id):
     retried = 0
     skipped = 0
 
-    is_supplier_statement = frappe.db.get_value(
-        "Statement Generation History", history_id, "supplier_statement"
+    history = (
+        frappe.db.get_value(
+            "Statement Generation History",
+            history_id,
+            ["supplier_statement", "statement_layout_v2"],
+            as_dict=True,
+        )
+        or {}
     )
+    is_supplier_statement = history.get("supplier_statement")
+
+    if is_supplier_statement and history.get("statement_layout_v2"):
+        from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms_v2.supplier_statement_forms_v2 import (
+            generate_single_supplier_pdf_v2 as supplier_generator,
+        )
+    else:
+        from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
+            generate_single_supplier_pdf as supplier_generator,
+        )
 
     logs = frappe.get_all(
         "PDF Generator Log",
@@ -2980,11 +3022,8 @@ def retry_all_queued_and_failed_pdf_jobs_for_history(history_id):
     for log in logs:
         try:
             if is_supplier_statement:
-                from agricultural_marketing.agricultural_marketing.page.supplier_statement_forms.supplier_statement_forms import (
-                    generate_single_supplier_pdf,
-                )
                 frappe.enqueue(
-                    method=generate_single_supplier_pdf,
+                    method=supplier_generator,
                     log_id=log["name"],
                     supplier_name=log["party_name"],
                     history_id=log["statement_generation_history"],

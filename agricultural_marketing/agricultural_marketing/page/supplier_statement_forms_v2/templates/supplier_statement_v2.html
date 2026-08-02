@@ -1,0 +1,486 @@
+<!--
+    Supplier Statement V2 template.
+
+    Pagination is done server-side (see paginate() in supplier_statement_forms_v2.py):
+    every `.sheet` is one physical A4 page carrying its own header, so the layout
+    is identical under headless Chrome, wkhtmltopdf and the browser print dialog.
+-->
+<meta charset="utf-8">
+
+<!-- prettier-ignore -->
+<style>{{ font_css }}</style>
+
+<!--
+    The stylesheet below contains NO template placeholders on purpose.  Editor
+    CSS formatters parse it as plain CSS and mangle Jinja braces into broken
+    rules, which silently kills the whole template.  Anything dynamic is passed
+    in as a CSS custom property on the .doc wrapper's style attribute instead
+    (see the bottom of this file) -- formatters leave attributes alone.
+-->
+<style>
+    @page {
+        size: A4 portrait;
+        margin: 0;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        color: #000;
+        font-family: "Cairo", "AGM Arabic", "Tajawal", "Noto Naskh Arabic",
+            "Amiri", "Segoe UI", "DejaVu Sans", sans-serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+
+        /* Keep every Arabic letter on its own glyph.  Cairo's optional
+           ligatures (ضر, بي, ...) collapse two letters into one glyph, and a
+           glyph can only carry one position in the PDF text stream -- so the
+           letters inside it come back out of order and the word stops being
+           searchable.  Arabic shaping itself uses init/medi/fina/isol, which
+           these properties do not touch. */
+        font-variant-ligatures: none;
+        font-feature-settings: "liga" 0,
+        "clig" 0,
+        "dlig" 0,
+        "hlig" 0,
+        "rlig" 0;
+    }
+
+    /* Sizes arrive as custom properties on the wrapper's style attribute.
+       The fallbacks keep the template readable on its own. */
+    .doc {
+        font-size: var(--fs, 10px);
+    }
+
+    /* Exactly one printed page per sheet.  A fixed height (not min-height) plus
+       overflow:hidden stops a sheet that is a millimetre too tall from spilling
+       into a second, near-empty page -- with a variable-width font like Cairo
+       that silently doubled the page count. Row counts are chosen well inside
+       this budget, and the test suite asserts PDF pages == rendered sheets. */
+    .sheet {
+        width: 210mm;
+        height: 297mm;
+        overflow: hidden;
+        padding: 5mm;
+        margin: 0 auto;
+        background: #fff;
+        page-break-after: always;
+        break-after: page;
+        display: flex;
+    }
+
+    .sheet:last-of-type {
+        page-break-after: auto;
+        break-after: auto;
+    }
+
+    .frame {
+        border: 2px solid #000;
+        padding: 3mm;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* ---------- header ---------- */
+
+    .head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 4mm;
+    }
+
+    .head .side {
+        flex: 1 1 0;
+        line-height: 1.7;
+        font-size: 0.92em;
+    }
+
+    .head .side.left {
+        text-align: left;
+    }
+
+    .head .side.right {
+        text-align: right;
+    }
+
+    .head .middle {
+        flex: 0 0 auto;
+        text-align: center;
+        min-width: 42mm;
+    }
+
+    .org-name {
+        font-weight: 700;
+        font-size: 1.05em;
+    }
+
+    .doc-title {
+        border: 1.5px solid #000;
+        padding: 2mm 8mm;
+        font-weight: 700;
+        font-size: 1.25em;
+        display: inline-block;
+        margin-bottom: 1.5mm;
+    }
+
+    .doc-meta {
+        font-size: 0.85em;
+        line-height: 1.6;
+    }
+
+    hr.rule {
+        border: 0;
+        border-top: 1.5px solid #000;
+        margin: 2mm 0;
+    }
+
+    /* ---------- identity + balances band ---------- */
+
+    .band {
+        display: flex;
+        align-items: stretch;
+        justify-content: space-between;
+        gap: 3mm;
+        margin-bottom: 2mm;
+    }
+
+    .band .identity {
+        flex: 1 1 0;
+        text-align: right;
+    }
+
+    .band .identity .line {
+        display: flex;
+        gap: 3mm;
+        line-height: 1.9;
+    }
+
+    .band .identity .label {
+        font-weight: 700;
+        min-width: 20mm;
+        border-bottom: 1px solid #000;
+    }
+
+    .band .qr {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 3mm;
+    }
+
+    .band .qr img {
+        width: 22mm;
+        height: 22mm;
+    }
+
+    .band .balances {
+        flex: 0 0 auto;
+        min-width: 68mm;
+    }
+
+    .band .balances table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9em;
+    }
+
+    .band .balances td {
+        padding: 0.8mm 1.5mm;
+        white-space: nowrap;
+    }
+
+    .band .balances .name {
+        font-weight: 700;
+        text-decoration: underline;
+        text-align: right;
+    }
+
+    /* ---------- ledger ---------- */
+
+    .ledger {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        margin-top: 1mm;
+    }
+
+    .ledger th,
+    .ledger td {
+        border: 1px solid #000;
+        padding: 0.8mm 1.5mm;
+        font-size: var(--fs-table, 9px);
+        line-height: 1.25;
+        text-align: center;
+        vertical-align: middle;
+        overflow: hidden;
+    }
+
+    /* Column headings: same size as the rows, set apart by weight only. */
+    .ledger thead th {
+        background: #d9d9d9;
+        font-weight: 700;
+    }
+
+    .ledger tbody tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    .ledger td.desc {
+        text-align: right;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    .num {
+        direction: ltr;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum";
+    }
+
+    .spacer {
+        flex: 1 1 auto;
+    }
+
+    /* ---------- closing totals block ---------- */
+
+    /* The tfoot cell is only a carrier: strip its own box so the nested totals
+       table lines up flush with the ledger's outer edges. */
+    .ledger tfoot .totals-row>td {
+        padding: 0;
+        border: 0;
+    }
+
+    .totals {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0;
+        font-size: 0.92em;
+    }
+
+    .totals td {
+        border: 1px solid #000;
+        padding: 1.1mm 1.5mm;
+        white-space: nowrap;
+    }
+
+    .totals .caption {
+        font-weight: 700;
+        text-align: right;
+        width: 26mm;
+    }
+
+    .totals .tag {
+        text-align: right;
+        width: 20mm;
+    }
+
+    .totals .amount {
+        width: 24mm;
+    }
+
+    .totals .net {
+        font-weight: 700;
+        font-size: 1.1em;
+        text-align: center;
+    }
+
+    .foot-note {
+        text-align: center;
+        font-size: 0.8em;
+        margin-top: 1.5mm;
+    }
+</style>
+
+<div class="doc" dir="{{ direction }}" lang="ar"
+     style="--fs: {{ font_size }}px; --fs-table: {{ table_font_size }}px;">
+    {% for page in pages %}
+    <div class="sheet">
+        <div class="frame">
+
+            <!-- ================= header ================= -->
+            <div class="head">
+                <div class="side right">
+                    <div class="org-name">{{ company.name }}</div>
+                    {% if company.cr_no %}<div>سجل تجاري {{ company.cr_no }}</div>{% endif %}
+                    {% if company.phone %}<div>جوال {{ company.phone }}</div>{% endif %}
+                </div>
+
+                <div class="middle">
+                    <div class="doc-title">كشف حساب</div>
+                    <div class="doc-meta">
+                        <div>{{ printed_on }}</div>
+                        <div>Page {{ page.index }} of {{ total_pages }}</div>
+                    </div>
+                </div>
+
+                <div class="side left">
+                    {% for line in company.address_lines %}<div>{{ line }}</div>{% endfor %}
+                    {% if company.tax_id %}<div>رقم ضريبي {{ company.tax_id }}</div>{% endif %}
+                </div>
+            </div>
+
+            <hr class="rule">
+
+            <!-- ================= identity + balances ================= -->
+            <div class="band">
+                <div class="identity">
+                    <div class="line">
+                        <span class="label">الاســم</span>
+                        <span>{{ supplier.name }}</span>
+                    </div>
+                    {% if show_supplier_code %}
+                    <div class="line">
+                        <span class="label">الرقــم</span>
+                        <span>{{ supplier.code }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="line">
+                        <span class="label">للفترة من</span>
+                        <span>{{ from_date }} &nbsp; حتى &nbsp; {{ to_date }}</span>
+                    </div>
+                </div>
+
+                {% if qr %}
+                <div class="qr"><img src="{{ qr }}" alt="QR"></div>
+                {% endif %}
+
+                <div class="balances">
+                    <table>
+                        <tr>
+                            <td class="name">رصيد سابق</td>
+                            <td>عليه</td>
+                            <td class="num">{{ balances.opening_debit }}</td>
+                            <td>له</td>
+                            <td class="num">{{ balances.opening_credit }}</td>
+                        </tr>
+                        <tr>
+                            <td class="name">خلال الفترة</td>
+                            <td>عليه</td>
+                            <td class="num">{{ balances.period_debit }}</td>
+                            <td>له</td>
+                            <td class="num">{{ balances.period_credit }}</td>
+                        </tr>
+                        <tr>
+                            <td class="name">الصافي</td>
+                            <td>عليه</td>
+                            <td class="num">{{ balances.closing_debit }}</td>
+                            <td>له</td>
+                            <td class="num">{{ balances.closing_credit }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ================= ledger ================= -->
+            <table class="ledger">
+                <thead>
+                    <tr>
+                        <th style="width: 9%">مسلسل</th>
+                        <th style="width: 39%">البيان</th>
+                        <th style="width: 12%">السعر</th>
+                        <th style="width: 14%">التاريخ</th>
+                        <th style="width: 13%">مبلغ مدين/عليه</th>
+                        <th style="width: 13%">مبلغ دائن / له</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in page.rows %}
+                    <tr>
+                        <td class="num">{{ row.idx }}</td>
+                        <td class="desc">{{ row.description }}</td>
+                        <td class="num">{{ row.price }}</td>
+                        <td class="num">{{ row.date }}</td>
+                        <td class="num">{{ row.debit }}</td>
+                        <td class="num">{{ row.credit }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not page.rows %}
+                    <tr>
+                        <td colspan="6" style="padding: 6mm">لا توجد حركات خلال الفترة المحددة</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+
+                <!-- The totals ride inside the ledger table itself, so they
+                     always sit flush against the last row and share its exact
+                     column edges. paginate() budgets rows for them. -->
+                {%- if page.is_last %}
+                <tfoot>
+                    <tr class="totals-row">
+                        <td colspan="6">
+                        <table class="totals">
+                            <tr>
+                                <td class="caption">حركة الاصناف</td>
+                                <td class="tag">مبلغ مدين</td>
+                                <td class="amount num">{{ totals.items_debit }}</td>
+                                <td class="tag">مبلغ دائن</td>
+                                <td class="amount num">{{ totals.items_credit }}</td>
+                            </tr>
+                            <tr>
+                                <td class="caption">سعي الاصناف</td>
+                                <td class="tag">مبلغ مدين</td>
+                                <td class="amount num">{{ totals.commission_debit }}</td>
+                                <td class="tag">مبلغ دائن</td>
+                                <td class="amount num">{{ totals.commission_credit }}</td>
+                            </tr>
+                            <tr>
+                                <td class="caption">صافي الاصناف</td>
+                                <td class="tag">مبلغ مدين</td>
+                                <td class="amount num">{{ totals.net_items_debit }}</td>
+                                <td class="tag">مبلغ دائن</td>
+                                <td class="amount num">{{ totals.net_items_credit }}</td>
+                            </tr>
+                            <tr>
+                                <td class="caption">حركة ماليه</td>
+                                <td class="tag">مبلغ مدين</td>
+                                <td class="amount num">{{ totals.cash_debit }}</td>
+                                <td class="tag">مبلغ دائن</td>
+                                <td class="amount num">{{ totals.cash_credit }}</td>
+                            </tr>
+                            <tr>
+                                <td class="caption">كمية الاصناف</td>
+                                <td class="tag">كمية صادرة</td>
+                                <td class="amount num">{{ totals.qty_out }}</td>
+                                <td class="tag">كمية واردة</td>
+                                <td class="amount num">{{ totals.qty_in }}</td>
+                            </tr>
+                            <tr>
+                                <td class="net" colspan="5">
+                                    الصافي ({{ totals.net_label }}) {{ totals.net_side }} مبلغ:
+                                    <span class="num">{{ totals.net_amount }}</span> ريال
+                                </td>
+                            </tr>
+                        </table>
+                        </td>
+                    </tr>
+                </tfoot>
+                {%- endif %}
+            </table>
+
+            <div class="spacer"></div>
+
+            {% if page.is_last %}
+            <div class="foot-note">
+                {% if report_note %}
+                {{ report_note }}
+                {% else %}
+                ملاحظة مهمة: يعتبر الكشف صحيحاً مالم يتم الاعتراض عليه خلال خمسة أيام من تاريخه
+                {% endif %}
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+    {% endfor %}
+</div>
