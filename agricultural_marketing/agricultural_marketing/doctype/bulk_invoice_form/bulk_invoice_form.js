@@ -25,10 +25,6 @@ frappe.ui.form.on("Bulk Invoice Form", {
     },
     
     onload(frm) {
-        // Fetch it here (not in refresh) so it is cached well before the user
-        // can add a row.
-        load_duplicate_last_row_setting();
-
         // Set up filters on load
         setup_filters(frm);
         if (frm.is_new() && !frm.doc.amended_from && !frm.doc.items.length > 1) {
@@ -83,30 +79,15 @@ frappe.ui.form.on("Bulk Invoice Form", {
 // ---------------------------------------------------------------------------
 //
 // items_add() runs synchronously, so the setting cannot be fetched on demand.
-// It is loaded once per session and cached. Until it arrives we honour the
-// field's own default (enabled), which keeps the long-standing behaviour of
-// this form unchanged.
-
-let duplicate_last_row_setting = 1;
-let duplicate_last_row_request = null;
-
-function load_duplicate_last_row_setting() {
-    if (duplicate_last_row_request) return duplicate_last_row_request;
-
-    duplicate_last_row_request = frappe.db
-        .get_single_value("Agriculture Settings", "duplicate_last_row_in_bulk_invoice")
-        .then((value) => {
-            // A never-saved Single returns null; fall back to the field default.
-            duplicate_last_row_setting = value === null || value === undefined ? 1 : cint(value);
-            return duplicate_last_row_setting;
-        })
-        .catch(() => duplicate_last_row_setting);
-
-    return duplicate_last_row_request;
-}
+// It ships with the page in bootinfo instead -- see
+// agricultural_marketing/boot.py. If bootinfo is missing it (an older worker
+// that has not restarted yet) we honour the field's own default, enabled,
+// which keeps the long-standing behaviour of this form unchanged.
 
 function duplicate_last_row_enabled() {
-    return Boolean(duplicate_last_row_setting);
+    const settings = (frappe.boot && frappe.boot.agricultural_marketing) || {};
+    const value = settings.duplicate_last_row_in_bulk_invoice;
+    return value === undefined ? true : Boolean(value);
 }
 
 // Fields that must NOT travel to the new row.
@@ -903,6 +884,11 @@ function setup_enter_as_tab(frm) {
 
         // Never hijack Enter inside a modal -- it belongs to the primary action.
         if ($target.closest(".modal").length) return;
+
+        // The quick entry bar runs its own field-to-field navigation and stops
+        // propagation; this is a second line of defence so Enter is never
+        // handled twice there.
+        if ($target.closest(".agrimkt-qe").length) return;
 
         // A Link/Select field keeps its suggestion list "open" even while it is
         // still loading or has come back empty, so testing open/closed alone

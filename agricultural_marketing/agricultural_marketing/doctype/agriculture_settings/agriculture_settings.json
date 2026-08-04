@@ -18,6 +18,8 @@
   "commission_based_on",
   "allow_couple_account",
   "duplicate_last_row_in_bulk_invoice",
+  "enable_bulk_quick_entry",
+  "quick_entry_use_cache_in_grid",
   "use_default_customer_in_tax_invoice",
   "default_customer",
   "supplier_charges_mode_of_payment",
@@ -224,6 +226,21 @@
    "fieldname": "duplicate_last_row_in_bulk_invoice",
    "fieldtype": "Check",
    "label": "Duplicate Last Row in Bulk Invoice"
+  },
+  {
+   "default": "0",
+   "description": "Show a fast keyboard-entry bar above the items table in Bulk Invoice Form. Suppliers, customers and items are cached in the browser so searching them needs no server request.",
+   "fieldname": "enable_bulk_quick_entry",
+   "fieldtype": "Check",
+   "label": "Enable Quick Entry Bar in Bulk Invoice"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_bulk_quick_entry",
+   "description": "Also search the cached list from the Item, Supplier, Customer and Pamper fields inside the items table, instead of querying the server on every keystroke.",
+   "fieldname": "quick_entry_use_cache_in_grid",
+   "fieldtype": "Check",
+   "label": "Use Cached Search Inside Items Table"
   },
   {
    "fieldname": "report_pdfs_setting_tab",

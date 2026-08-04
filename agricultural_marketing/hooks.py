@@ -28,7 +28,16 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Payments and Receipts" : "public/js/payments_and_receipts.js"}
+doctype_js = {
+	"Payments and Receipts": "public/js/payments_and_receipts.js",
+	# Appended after bulk_invoice_form.js (see DocTypeMeta.add_code), so these
+	# register their own form handlers rather than being called from it.
+	"Bulk Invoice Form": ["public/js/party_catalog.js", "public/js/bulk_quick_entry.js"],
+}
+
+# Ship the Agriculture Settings desk flags with the page instead of fetching
+# them asynchronously after render. See agricultural_marketing/boot.py.
+extend_bootinfo = "agricultural_marketing.boot.boot_session"
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -127,9 +136,26 @@ doc_events = {
         "after_insert": "agricultural_marketing.standard_doctypes.supplier.create_related_customer",
         "validate": "agricultural_marketing.standard_doctypes.supplier.create_related_customer",
         "on_trash": "agricultural_marketing.standard_doctypes.supplier.delete_related_customer",
-        "on_update": "agricultural_marketing.standard_doctypes.supplier.sync_supplier_to_customer",
-        "after_rename": "agricultural_marketing.standard_doctypes.supplier.rename_customer_from_supplier",
-        
+        "on_update": [
+            "agricultural_marketing.standard_doctypes.supplier.sync_supplier_to_customer",
+            "agricultural_marketing.party_catalog.clear_catalog_cache",
+        ],
+        "after_rename": [
+            "agricultural_marketing.standard_doctypes.supplier.rename_customer_from_supplier",
+            "agricultural_marketing.party_catalog.clear_catalog_cache",
+        ],
+        "after_delete": "agricultural_marketing.party_catalog.clear_catalog_cache",
+    },
+    # Keep the quick-entry catalog fresh; see agricultural_marketing/party_catalog.py.
+    "Customer": {
+        "on_update": "agricultural_marketing.party_catalog.clear_catalog_cache",
+        "after_rename": "agricultural_marketing.party_catalog.clear_catalog_cache",
+        "after_delete": "agricultural_marketing.party_catalog.clear_catalog_cache",
+    },
+    "Item": {
+        "on_update": "agricultural_marketing.party_catalog.clear_catalog_cache",
+        "after_rename": "agricultural_marketing.party_catalog.clear_catalog_cache",
+        "after_delete": "agricultural_marketing.party_catalog.clear_catalog_cache",
     },
     "Sales Invoice": {
         "on_cancel": "agricultural_marketing.standard_doctypes.sales_invoice.update_invoice_form",

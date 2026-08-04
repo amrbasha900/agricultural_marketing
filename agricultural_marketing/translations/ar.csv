@@ -80,3 +80,23 @@ Is Supplier Charge, سند رسوم موردين
 Invoice Form, فاتورة الموردين
 Built from Invoice Form supplier charges. Change the invoices to change this voucher., منشأ من رسوم موردين في فواتير الموردين. عدّل الفواتير لتعديل هذا السند.
 Building charge payments for {0} invoices in the background..., جاري إنشاء سندات الرسوم لعدد {0} فاتورة في الخلفية...
+Quick Entry,الإدخال السريع
+Refresh Cached Data,تحديث البيانات المخزنة
+Add Row,إضافة صف
+No matches,لا توجد نتائج
+Suppliers,الموردين
+Customers,العملاء
+Items,الأصناف
+cached,محفوظة منذ
+Refreshing cached data...,جارٍ تحديث البيانات المخزنة...
+Cached data updated,تم تحديث البيانات المخزنة
+Could not refresh cached data,تعذر تحديث البيانات المخزنة
+Could not load the quick entry data,تعذر تحميل بيانات الإدخال السريع
+{0} is required,{0} مطلوب
+Added {0}: {1} × {2},تمت إضافة {0}: {1} × {2}
+Enable Quick Entry Bar in Bulk Invoice,تفعيل شريط الإدخال السريع في الفاتورة المجمعة
+"Show a fast keyboard-entry bar above the items table in Bulk Invoice Form. Suppliers, customers and items are cached in the browser so searching them needs no server request.",إظهار شريط إدخال سريع بلوحة المفاتيح أعلى جدول الأصناف في الفاتورة المجمعة. يتم تخزين الموردين والعملاء والأصناف داخل المتصفح فلا يحتاج البحث فيها إلى أي طلب من الخادم.
+Use Cached Search Inside Items Table,استخدام البحث المخزن داخل جدول الأصناف
+"Also search the cached list from the Item, Supplier, Customer and Pamper fields inside the items table, instead of querying the server on every keystroke.",البحث أيضاً في القائمة المخزنة من حقول الصنف والمورد والعميل والمدلل داخل جدول الأصناف، بدلاً من استعلام الخادم عند كل حرف.
+Recently used,آخر ما استُخدم
+Drag to reorder,اسحب لإعادة الترتيب
