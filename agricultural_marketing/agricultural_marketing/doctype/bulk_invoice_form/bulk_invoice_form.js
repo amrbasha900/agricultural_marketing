@@ -495,48 +495,122 @@ function calculate_total(frm, cdt, cdn) {
     frm.refresh_field("items");
 }
 
+// Generating the Invoice Forms of a large bulk invoice is slow, and the button
+// used to stay live while it ran. A second click started a second run over rows
+// the first run had not linked back yet, which is how a 200 row document ended
+// up with 350 generated rows. The server refuses concurrent runs now; this flag
+// keeps the user from waiting on a request that will only be rejected.
+let creating_invoice_forms = false;
+
 function create_invoice_forms(frm) {
     if (!frm.doc.items || frm.doc.items.length === 0) {
         frappe.msgprint(__("Please add items before creating invoice forms"));
         return;
     }
-    
+
+    if (creating_invoice_forms) {
+        frappe.show_alert({
+            message: __("Invoice Forms are already being created, please wait"),
+            indicator: "orange"
+        });
+        return;
+    }
+
     // Check if there are any items without references
     let items_without_references = frm.doc.items.filter(item => !item.reference_invoice_form);
-    
+
     if (items_without_references.length === 0) {
         frappe.msgprint(__("All items already have Invoice Form references"));
         return;
     }
-    
+
     let message = __("This will create/update Invoice Forms grouped by supplier.");
-    
+
     if (items_without_references.length < frm.doc.items.length) {
-        message += __("<br><br>Items without references: {0}<br>Items with existing references: {1}", 
+        message += __("<br><br>Items without references: {0}<br>Items with existing references: {1}",
             [items_without_references.length, frm.doc.items.length - items_without_references.length]);
     }
-    
+
     message += __("<br><br>Are you sure?");
-    
+
     frappe.confirm(
         message,
         function() {
-            frappe.call({
-                method: "create_invoice_forms",
-                doc: frm.doc,
-                callback: function(r) {
-                    if (r.message) {
-                        frm.reload_doc();
-                        frappe.show_alert({
-                            message: __("Invoice Forms processed successfully"),
-                            indicator: "green"
-                        });
-                    }
-                }
-            });
+            // Unsaved rows are not in the database, so the server would skip
+            // them. Save first instead of generating an incomplete set.
+            const proceed = () => run_create_invoice_forms(frm);
+
+            if (frm.is_dirty()) {
+                frm.save().then(proceed);
+            } else {
+                proceed();
+            }
         }
     );
 }
+
+function run_create_invoice_forms(frm) {
+    creating_invoice_forms = true;
+
+    frappe.call({
+        method: "create_invoice_forms",
+        doc: frm.doc,
+        freeze: true,
+        freeze_message: __("Creating Invoice Forms..."),
+        callback: function(r) {
+            if (r.message && r.message.queued) {
+                // Large document: the work moved to a background job, the result
+                // arrives on the realtime channel below.
+                frappe.show_alert({
+                    message: __("Creating Invoice Forms in the background, you will be notified when it is done"),
+                    indicator: "blue"
+                });
+                return;
+            }
+
+            creating_invoice_forms = false;
+
+            if (r.message) {
+                frm.reload_doc();
+                frappe.show_alert({
+                    message: __("Invoice Forms processed successfully"),
+                    indicator: "green"
+                });
+            }
+        },
+        error: function() {
+            creating_invoice_forms = false;
+            // Show what actually made it through, so the next attempt is not run
+            // against a stale copy of the document.
+            frm.reload_doc();
+        }
+    });
+}
+
+// Progress and result of the background job. Bound once for the whole session.
+frappe.realtime.on("bulk_invoice_forms_progress", function(data) {
+    if (!data || !cur_frm || cur_frm.doc.name !== data.bulk_invoice) return;
+
+    if (data.status === "in_progress") {
+        frappe.show_progress(
+            __("Creating Invoice Forms"),
+            data.done,
+            data.total,
+            __("Supplier {0} of {1}", [data.done, data.total])
+        );
+        return;
+    }
+
+    creating_invoice_forms = false;
+    frappe.hide_progress();
+    cur_frm.reload_doc();
+
+    if (data.status === "completed") {
+        frappe.msgprint(data.message, __("Invoice Forms Created"));
+    } else {
+        frappe.msgprint(data.message, __("Creating Invoice Forms Failed"));
+    }
+});
 
 function show_action_popup(frm, row, cdt, cdn) {
     console.log("Showing action popup for row", row);

@@ -100,3 +100,19 @@ Use Cached Search Inside Items Table,استخدام البحث المخزن دا
 "Also search the cached list from the Item, Supplier, Customer and Pamper fields inside the items table, instead of querying the server on every keystroke.",البحث أيضاً في القائمة المخزنة من حقول الصنف والمورد والعميل والمدلل داخل جدول الأصناف، بدلاً من استعلام الخادم عند كل حرف.
 Recently used,آخر ما استُخدم
 Drag to reorder,اسحب لإعادة الترتيب
+Please save the document before creating Invoice Forms,يرجى حفظ المستند قبل إنشاء فواتير الموردين
+Invoice Forms can only be created from a draft Bulk Invoice Form,لا يمكن إنشاء فواتير الموردين إلا من فاتورة مجمعة في حالة مسودة
+Bulk Invoice Form {0} not found,الفاتورة المجمعة {0} غير موجودة
+Created {0} new Invoice Forms,تم إنشاء {0} فاتورة موردين جديدة
+Updated {0} existing Invoice Forms,تم تحديث {0} فاتورة موردين قائمة
+Added {0} item rows,تمت إضافة {0} سطر صنف
+Re-linked {0} item rows that were already generated,تمت إعادة ربط {0} سطر صنف كان قد أُنشئ مسبقاً
+Skipped {0} item rows with no supplier,تم تجاهل {0} سطر صنف بدون مورد
+All items already have Invoice Form references,جميع الأصناف مرتبطة بفواتير موردين بالفعل
+"Invoice Forms are already being created, please wait",جاري إنشاء فواتير الموردين بالفعل، يرجى الانتظار
+Creating Invoice Forms...,جاري إنشاء فواتير الموردين...
+"Creating Invoice Forms in the background, you will be notified when it is done",يتم إنشاء فواتير الموردين في الخلفية، وسيتم إعلامك عند الانتهاء
+Creating Invoice Forms,إنشاء فواتير الموردين
+Supplier {0} of {1},المورد {0} من {1}
+Invoice Forms Created,تم إنشاء فواتير الموردين
+Creating Invoice Forms Failed,فشل إنشاء فواتير الموردين

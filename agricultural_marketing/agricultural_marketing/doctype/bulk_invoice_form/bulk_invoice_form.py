@@ -6,6 +6,15 @@ from frappe import _
 from frappe.model.document import Document
 from collections import defaultdict
 
+# Above this many rows the generation runs in a background job instead of inside
+# the web request. A large bulk invoice takes longer than the gateway timeout on
+# a slow server, and a request that dies half way used to leave Invoice Forms
+# behind that the next attempt would fill a second time.
+BACKGROUND_THRESHOLD = 50
+
+# Realtime channel used to report progress of the background job to the browser.
+PROGRESS_EVENT = "bulk_invoice_forms_progress"
+
 
 class BulkInvoiceForm(Document):
     def before_save(self):
@@ -233,14 +242,13 @@ class BulkInvoiceForm(Document):
                     "bulk_invoice_item_reference": item.name
                 })
                 
-                # Update references in bulk invoice item
-                item.reference_invoice_form = invoice_form.name
-                item.reference_invoice_form_item = invoice_item.name
-                
                 # Save the invoice form
                 invoice_form.save()
-                
-                frappe.log_error(message=f"Added new item {item.name} to Invoice Form {invoice_form.name}", title="Auto Invoice Creation")
+
+                # Update references in bulk invoice item. Only after the save,
+                # a row appended in memory has no name yet.
+                item.reference_invoice_form = invoice_form.name
+                item.reference_invoice_form_item = invoice_item.name
                 
             except Exception as e:
                 frappe.log_error(message=f"Error auto-creating invoice for new item {item.name} with supplier {item.supplier}: {str(e)}", title="Auto Invoice Creation Error")
@@ -367,90 +375,41 @@ class BulkInvoiceForm(Document):
     
     @frappe.whitelist()
     def create_invoice_forms(self):
-        """Create Invoice Forms grouped by supplier"""
+        """Create Invoice Forms grouped by supplier.
+
+        Small documents are generated inline. Anything past BACKGROUND_THRESHOLD
+        rows is handed to a background job, because generation on a slow server
+        outlives the gateway timeout and the user then retries on top of a half
+        finished run. Either way the work itself is done by build_invoice_forms(),
+        which is safe to run twice: rows already present in an Invoice Form are
+        never appended again.
+        """
         if not self.items:
             frappe.throw(_("No items to create invoices from"))
-        
-        # Group items by supplier, but only for items without existing references
-        supplier_items = defaultdict(list)
-        existing_invoice_forms = {}
-        
-        for item in self.items:
-            if not item.reference_invoice_form:
-                # Item doesn't have a reference, needs to be added to an invoice form
-                supplier_items[item.supplier].append(item)
-            else:
-                # Item already has a reference, track the existing invoice form
-                if item.supplier not in existing_invoice_forms:
-                    try:
-                        existing_invoice_forms[item.supplier] = frappe.get_doc("Invoice Form", item.reference_invoice_form)
-                    except:
-                        # Invoice form might have been deleted, treat as new item
-                        supplier_items[item.supplier].append(item)
-        
-        created_invoices = []
-        updated_invoices = []
-        
-        for supplier, items in supplier_items.items():
-            try:
-                # Check if there's already an invoice form for this supplier
-                if supplier in existing_invoice_forms:
-                    # Use existing invoice form
-                    invoice_form = existing_invoice_forms[supplier]
-                else:
-                    # Find or create invoice form for this supplier
-                    invoice_form = find_or_create_invoice_form(self, supplier)
-                    if invoice_form.name not in created_invoices:
-                        created_invoices.append(invoice_form.name)
-                
-                # Add items to invoice form
-                for item in items:
-                    invoice_item = invoice_form.append("items", {
-                        "item_code": item.item_code,
-                        "item_name": item.item_name,
-                        "qty": item.qty,
-                        "price": item.price,
-                        "total": item.total,
-                        "customer": item.customer,
-                        "pamper": item.pamper,
-                        "bulk_invoice_reference": self.name,
-                        "bulk_invoice_item_reference": item.name
-                    })
-                    
-                    # Update references in bulk invoice items
-                    item.reference_invoice_form = invoice_form.name
-                    item.reference_invoice_form_item = invoice_item.name
-                
-                # Save the invoice form
-                invoice_form.save()
-                
-                if invoice_form.name not in created_invoices:
-                    updated_invoices.append(invoice_form.name)
-                
-            except Exception as e:
-                frappe.log_error(message=f"Error creating/updating invoice for supplier {supplier}: {str(e)}", title="Invoice Creation Error")
-                frappe.throw(_("Error creating invoice for supplier {0}: {1}").format(supplier, str(e)))
-        
-        # Save the bulk invoice form with updated references
-        self.save()
-        
-        # Build result message
-        messages = []
-        if created_invoices:
-            messages.append(_("Created {0} new Invoice Forms: {1}").format(
-                len(created_invoices), ", ".join(created_invoices)
-            ))
-        if updated_invoices:
-            messages.append(_("Updated {0} existing Invoice Forms: {1}").format(
-                len(updated_invoices), ", ".join(updated_invoices)
-            ))
-        
-        if messages:
-            frappe.msgprint("<br>".join(messages))
-        else:
-            frappe.msgprint(_("All items already have Invoice Form references"))
-        
-        return created_invoices + updated_invoices
+
+        if self.is_new():
+            frappe.throw(_("Please save the document before creating Invoice Forms"))
+
+        # Rows the user typed but did not save yet are not in the database, so the
+        # job would silently skip them. Ask for a save instead of losing them.
+        if any(item.get("__islocal") or (item.name or "").startswith("new-") for item in self.items):
+            frappe.throw(_("Please save the document before creating Invoice Forms"))
+
+        if len(self.items) > BACKGROUND_THRESHOLD:
+            frappe.enqueue(
+                "agricultural_marketing.agricultural_marketing.doctype.bulk_invoice_form.bulk_invoice_form.create_invoice_forms_in_background",
+                queue="long",
+                timeout=3600,
+                job_id=background_job_id(self.name),
+                deduplicate=True,
+                bulk_invoice=self.name,
+                user=frappe.session.user,
+            )
+            return {"queued": True, "total_rows": len(self.items)}
+
+        result = build_invoice_forms(self.name)
+        frappe.msgprint(format_result_message(result))
+        return result
 
     def on_trash(self):
         """Handle bulk invoice deletion"""
@@ -736,76 +695,251 @@ def update_item_in_same_invoice(bulk_invoice, item):
         return {"success": False, "message": str(e)}
 
 
-def find_or_create_invoice_form(bulk_invoice, supplier):
-    """Find existing invoice form for supplier from SAME bulk invoice or create new one with specific naming"""
-    
-    # Only search if bulk_invoice has a name (has been saved)
-    if not bulk_invoice.name:
-        return create_new_invoice_form(bulk_invoice, supplier)
-    
-    # Check if there's already an invoice form for this supplier from THIS specific bulk invoice
-    existing_invoice_form = None
-    
-    # Method 1: Look through items in the current bulk invoice to find existing references
-    for item in bulk_invoice.items:
-        if item.supplier == supplier and item.reference_invoice_form:
-            try:
-                # Verify the invoice form still exists and has the correct supplier and bulk reference
-                invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
-                if (invoice_form.supplier == supplier and 
-                    hasattr(invoice_form, 'bulk_invoice_reference') and 
-                    invoice_form.bulk_invoice_reference == bulk_invoice.name):
-                    existing_invoice_form = invoice_form
-                    break
-            except:
-                # Invoice form might have been deleted, continue searching
-                continue
-    
-    if existing_invoice_form:
-        frappe.log_error(message=f"Found existing invoice form {existing_invoice_form.name} for supplier {supplier} from bulk invoice {bulk_invoice.name}", title="Find Invoice Form")
-        return existing_invoice_form
-    
-    # Method 2: Search for existing invoice forms with same supplier AND same bulk_invoice_reference
+def background_job_id(bulk_invoice_name):
+    """One job per bulk invoice, so a second click cannot queue a second run."""
+    return f"create_invoice_forms::{bulk_invoice_name}"
+
+
+def create_invoice_forms_in_background(bulk_invoice, user=None):
+    """Background entry point for build_invoice_forms(), reporting over realtime."""
+    user = user or frappe.session.user
+
     try:
-        existing_invoice_forms = frappe.get_all("Invoice Form", 
+        result = build_invoice_forms(bulk_invoice, user=user)
+        frappe.db.commit()
+        payload = dict(result, bulk_invoice=bulk_invoice, status="completed",
+                       message=format_result_message(result))
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(
+            title="Bulk Invoice Form: create invoice forms",
+            message=f"{bulk_invoice}\n\n{frappe.get_traceback()}",
+        )
+        payload = {"bulk_invoice": bulk_invoice, "status": "failed", "message": str(e)}
+
+    frappe.publish_realtime(PROGRESS_EVENT, payload, user=user)
+
+
+def build_invoice_forms(bulk_invoice_name, user=None):
+    """Create/extend the Invoice Forms of a bulk invoice, one form per supplier.
+
+    Runs as a single transaction and is idempotent: an item row is only appended
+    to an Invoice Form when no row carrying its `bulk_invoice_item_reference`
+    exists yet. That is what stops a retry after a timeout from producing a
+    second copy of every row. Rows generated by an interrupted run but never
+    linked back are repaired instead of duplicated.
+    """
+    # Serialise concurrent runs (double click, retry while the first is still
+    # working). The lock is held until this transaction ends.
+    if not frappe.db.get_value("Bulk Invoice Form", bulk_invoice_name, "name", for_update=True):
+        frappe.throw(_("Bulk Invoice Form {0} not found").format(bulk_invoice_name))
+
+    doc = frappe.get_doc("Bulk Invoice Form", bulk_invoice_name)
+
+    if doc.docstatus != 0:
+        frappe.throw(_("Invoice Forms can only be created from a draft Bulk Invoice Form"))
+
+    live_forms, forms_by_supplier, linked_rows = get_generated_invoice_forms(doc.name)
+
+    created = []
+    updated = []
+    repaired = 0
+    skipped = 0
+    pending_by_supplier = defaultdict(list)
+
+    for item in doc.items:
+        existing_row = linked_rows.get(item.name)
+
+        if existing_row:
+            # The row is already in an Invoice Form. If the link back into the
+            # bulk invoice was lost (interrupted run), restore it - do not create
+            # the row a second time.
+            if (item.reference_invoice_form, item.reference_invoice_form_item) != existing_row:
+                set_item_reference(item, existing_row[0], existing_row[1])
+                repaired += 1
+            continue
+
+        if item.reference_invoice_form and item.reference_invoice_form in live_forms:
+            # Linked to a form that is still around but has no matching row, e.g.
+            # the row was removed by hand. Leave it alone, as before.
+            continue
+
+        if not item.supplier:
+            skipped += 1
+            continue
+
+        pending_by_supplier[item.supplier].append(item)
+
+    total_suppliers = len(pending_by_supplier)
+
+    for index, (supplier, items) in enumerate(pending_by_supplier.items(), start=1):
+        form_name = forms_by_supplier.get(supplier)
+
+        if form_name:
+            invoice_form = frappe.get_doc("Invoice Form", form_name)
+            updated.append(invoice_form.name)
+        else:
+            invoice_form = create_new_invoice_form(doc, supplier)
+            forms_by_supplier[supplier] = invoice_form.name
+            created.append(invoice_form.name)
+
+        for item in items:
+            invoice_form.append("items", {
+                "item_code": item.item_code,
+                "item_name": item.item_name,
+                "qty": item.qty,
+                "price": item.price,
+                "total": item.total,
+                "customer": item.customer,
+                "pamper": item.pamper,
+                "bulk_invoice_reference": doc.name,
+                "bulk_invoice_item_reference": item.name,
+            })
+
+        invoice_form.save()
+
+        # Child row names only exist after the save, which is why the reference
+        # is written here and not while appending.
+        row_names = {
+            row.bulk_invoice_item_reference: row.name
+            for row in invoice_form.items
+            if row.bulk_invoice_item_reference
+        }
+        for item in items:
+            set_item_reference(item, invoice_form.name, row_names.get(item.name))
+
+        publish_progress(doc.name, index, total_suppliers, user)
+
+    return {
+        "created": created,
+        "updated": updated,
+        "rows_added": sum(len(items) for items in pending_by_supplier.values()),
+        "rows_repaired": repaired,
+        "rows_without_supplier": skipped,
+    }
+
+
+def get_generated_invoice_forms(bulk_invoice_name):
+    """Read every Invoice Form generated from this bulk invoice in two queries.
+
+    Returns (live form names, {supplier: draft form name}, {bulk item name:
+    (form name, form item name)}).
+    """
+    forms = frappe.get_all(
+        "Invoice Form",
+        filters={"bulk_invoice_reference": bulk_invoice_name, "docstatus": ["<", 2]},
+        fields=["name", "supplier", "docstatus"],
+        order_by="creation asc",
+    )
+
+    live_forms = {form.name for form in forms}
+    forms_by_supplier = {}
+    for form in forms:
+        # Only a draft can take more rows.
+        if form.docstatus == 0 and form.supplier not in forms_by_supplier:
+            forms_by_supplier[form.supplier] = form.name
+
+    linked_rows = {}
+    if live_forms:
+        rows = frappe.get_all(
+            "Invoice Form Item",
+            filters={
+                "parenttype": "Invoice Form",
+                "parent": ["in", list(live_forms)],
+                "bulk_invoice_item_reference": ["is", "set"],
+            },
+            fields=["name", "parent", "bulk_invoice_item_reference"],
+        )
+        for row in rows:
+            linked_rows.setdefault(row.bulk_invoice_item_reference, (row.parent, row.name))
+
+    return live_forms, forms_by_supplier, linked_rows
+
+
+def set_item_reference(item, form_name, form_item_name):
+    """Point a bulk invoice row at its generated Invoice Form row.
+
+    Written straight to the row rather than through a full save of the parent:
+    the parent carries hundreds of rows and re-saving it on every supplier is
+    both slow and a source of timestamp conflicts with the open form.
+    """
+    item.reference_invoice_form = form_name
+    item.reference_invoice_form_item = form_item_name
+
+    frappe.db.set_value(
+        "Bulk Invoice Form Item",
+        item.name,
+        {
+            "reference_invoice_form": form_name,
+            "reference_invoice_form_item": form_item_name,
+        },
+        update_modified=False,
+    )
+
+
+def publish_progress(bulk_invoice_name, done, total, user=None):
+    if not user:
+        return
+
+    frappe.publish_realtime(
+        PROGRESS_EVENT,
+        {
+            "bulk_invoice": bulk_invoice_name,
+            "status": "in_progress",
+            "done": done,
+            "total": total,
+        },
+        user=user,
+    )
+
+
+def format_result_message(result):
+    messages = []
+
+    if result.get("created"):
+        messages.append(_("Created {0} new Invoice Forms").format(len(result["created"])))
+    if result.get("updated"):
+        messages.append(_("Updated {0} existing Invoice Forms").format(len(result["updated"])))
+    if result.get("rows_added"):
+        messages.append(_("Added {0} item rows").format(result["rows_added"]))
+    if result.get("rows_repaired"):
+        messages.append(_("Re-linked {0} item rows that were already generated").format(
+            result["rows_repaired"]
+        ))
+    if result.get("rows_without_supplier"):
+        messages.append(_("Skipped {0} item rows with no supplier").format(
+            result["rows_without_supplier"]
+        ))
+
+    if not messages:
+        return _("All items already have Invoice Form references")
+
+    return "<br>".join(messages)
+
+
+def find_or_create_invoice_form(bulk_invoice, supplier):
+    """Find the draft invoice form of this supplier from the SAME bulk invoice, or create one"""
+    if bulk_invoice.name:
+        existing = frappe.get_all(
+            "Invoice Form",
             filters={
                 "supplier": supplier,
                 "bulk_invoice_reference": bulk_invoice.name,  # Only from same bulk invoice
                 "docstatus": 0,  # Only draft invoices
-                "company": bulk_invoice.company
+                "company": bulk_invoice.company,
             },
             fields=["name"],
-            limit=1
+            limit=1,
         )
-        
-        if existing_invoice_forms:
-            existing_form = frappe.get_doc("Invoice Form", existing_invoice_forms[0].name)
-            frappe.log_error(message=f"Found existing invoice form {existing_form.name} for supplier {supplier} from bulk invoice {bulk_invoice.name}", title="Find Invoice Form")
-            return existing_form
-            
-    except Exception as e:
-        frappe.log_error(message=f"Error searching for existing invoice forms: {str(e)}", title="Find Invoice Form Error")
-    
-    # Create a new invoice form
+
+        if existing:
+            return frappe.get_doc("Invoice Form", existing[0].name)
+
     return create_new_invoice_form(bulk_invoice, supplier)
 
 
 def create_new_invoice_form(bulk_invoice, supplier):
-    """Create a new invoice form with specific naming"""
-    frappe.log_error(message=f"Creating new invoice form for supplier {supplier} from bulk invoice {bulk_invoice.name or 'NEW'}", title="Create Invoice Form")
-    
-    # Get supplier order in the items table
-    suppliers_seen = []
-    supplier_order = 1
-    
-    for item in bulk_invoice.items:
-        if item.supplier and item.supplier not in suppliers_seen:
-            suppliers_seen.append(item.supplier)
-            if item.supplier == supplier:
-                supplier_order = len(suppliers_seen)
-                break
-    
-    # Create the invoice form
+    """Create a new invoice form named after the bulk invoice"""
     invoice_form = frappe.new_doc("Invoice Form")
     invoice_form.update({
         "company": bulk_invoice.company,
@@ -814,24 +948,48 @@ def create_new_invoice_form(bulk_invoice, supplier):
         "supplier": supplier,
         "bulk_invoice_reference": bulk_invoice.name,  # Set the bulk invoice reference (might be None for new docs)
     })
-    
-    # Insert first to get a system-generated name
-    invoice_form.insert(ignore_permissions=True, ignore_mandatory=True)
-    
-    # If bulk invoice has a name, rename the invoice form to desired pattern
-    if bulk_invoice.name:
-        new_name = f"{bulk_invoice.name}-{supplier_order:03d}"
-        
-        try:
-            frappe.rename_doc("Invoice Form", invoice_form.name, new_name, ignore_if_exists=False, force=True)
-            invoice_form.name = new_name  # Update the object reference
-            frappe.db.commit()
-            frappe.log_error(message=f"Successfully created and renamed invoice form to {new_name} for bulk invoice {bulk_invoice.name}", title="Invoice Form Creation")
-        except Exception as e:
-            frappe.log_error(message=f"Error renaming invoice form: {str(e)}", title="Invoice Form Naming Error")
-            # If renaming fails, continue with the system-generated name
-    
+
+    # The name is set on insert. It used to be inserted under the naming series
+    # and renamed afterwards, but rename_doc renames the record before the rest
+    # of its work, so a failure anywhere in it left this object holding a name
+    # that no longer existed and the next save() died with DoesNotExistError.
+    # Renaming is also expensive: it rewrites every link field and clears the
+    # whole cache, once per supplier.
+    invoice_form.insert(
+        ignore_permissions=True,
+        ignore_mandatory=True,
+        set_name=get_new_invoice_form_name(bulk_invoice, supplier),
+    )
+
     return invoice_form
+
+
+def get_new_invoice_form_name(bulk_invoice, supplier):
+    """`<bulk invoice>-<supplier order in the items table>`, e.g. BULK-0001-003.
+
+    Returns None for an unsaved bulk invoice so the naming series takes over.
+    The counter moves on when the name is taken, so an insert never collides
+    with a form left behind by an earlier run.
+    """
+    if not bulk_invoice.name:
+        return None
+
+    suppliers_seen = []
+    for item in bulk_invoice.items:
+        if item.supplier and item.supplier not in suppliers_seen:
+            suppliers_seen.append(item.supplier)
+
+    if supplier in suppliers_seen:
+        supplier_order = suppliers_seen.index(supplier) + 1
+    else:
+        supplier_order = len(suppliers_seen) + 1
+
+    for order in range(supplier_order, supplier_order + 100):
+        name = f"{bulk_invoice.name}-{order:03d}"
+        if not frappe.db.exists("Invoice Form", name):
+            return name
+
+    return None
 
 @frappe.whitelist()
 def create_bulk_invoice_from_items(items_data, company, posting_date=None):
