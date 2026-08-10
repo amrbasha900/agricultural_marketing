@@ -603,15 +603,63 @@ def install_chrome(version=None):
     return {"version": channel["version"], "path": final, "engine": pdf_engine_info()}
 
 
+def chrome_is_usable(path=None):
+    """Whether the resolved browser can actually start.
+
+    Slim container images frequently carry the binary but not its shared
+    libraries (libnss3, libgbm, libasound2, ...). Existence alone therefore
+    proves nothing, and a browser that cannot start makes get_pdf_bytes() fall
+    back to wkhtmltopdf *silently* -- the PDF still arrives, just without
+    searchable Arabic. Probing keeps the reported engine honest.
+
+    Cached for an hour: spawning Chrome costs ~100 ms.
+    """
+    path = path or chrome_path()
+    if not path:
+        return False
+
+    cache_key = "agm_chrome_usable::" + path
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return bool(cint(cached))
+
+    try:
+        result = subprocess.run(
+            [path, "--version"], capture_output=True, timeout=30, check=False
+        )
+        usable = result.returncode == 0
+    except Exception:
+        usable = False
+
+    # get_value() takes no TTL, so the expiry has to be set on the write.
+    frappe.cache().set_value(cache_key, 1 if usable else 0, expires_in_sec=3600)
+    return usable
+
+
 def pdf_engine_info():
     """Reported in the UI so the user always knows which engine will be used."""
     resolved = chrome_path()
-    if resolved:
+
+    if resolved and chrome_is_usable(resolved):
         return {
             "engine": "google-chrome",
             "path": resolved,
             "searchable_arabic": True,
             "message": _("PDFs are rendered with headless Google Chrome (searchable Arabic text)."),
+        }
+
+    if resolved:
+        # Found but not runnable -- almost always missing shared libraries in a
+        # slim container image. Say so, rather than claiming Chrome is in use.
+        return {
+            "engine": "wkhtmltopdf",
+            "path": resolved,
+            "searchable_arabic": False,
+            "message": _(
+                "Chrome was found at {0} but will not start (usually missing system "
+                "libraries), so PDFs fall back to wkhtmltopdf and Arabic text will "
+                "not be searchable."
+            ).format(resolved),
         }
 
     return {
