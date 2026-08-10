@@ -234,6 +234,58 @@ def get_pdf_bytes(html, options=None):
     return make_arabic_searchable(content)
 
 
+#: Binary names to look for, in order of preference. The headless shell is what
+#: Chrome-for-Testing ships and is enough for --print-to-pdf.
+CHROME_BINARIES = (
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+    "chrome",
+    "chrome-headless-shell",
+    "headless_shell",
+)
+
+
+def chrome_path():
+    """Locate the Chrome binary used for PDF rendering.
+
+    Looked up in this order:
+
+    1. ``chrome_path`` in site_config.json / common_site_config.json
+    2. ``$CHROME_PATH`` or ``$CHROME_BIN``
+    3. ``<bench>/chrome/chrome-headless-shell`` (see install_chrome())
+    4. anything on PATH
+
+    The first two exist because the official frappe/erpnext Docker images ship
+    wkhtmltopdf and no Chrome at all: a compose file can point at a browser from
+    another layer or a mounted volume without touching this code.
+    """
+    configured = (
+        frappe.conf.get("chrome_path")
+        or os.environ.get("CHROME_PATH")
+        or os.environ.get("CHROME_BIN")
+    )
+    if configured and os.path.exists(configured):
+        return configured
+
+    try:
+        bundled = os.path.join(
+            frappe.utils.get_bench_path(), "chrome", "chrome-headless-shell"
+        )
+        if os.path.exists(bundled):
+            return bundled
+    except Exception:
+        pass
+
+    for name in CHROME_BINARIES:
+        found = shutil.which(name)
+        if found:
+            return found
+
+    return None
+
+
 def _print_with_chrome(html):
     """Print self-contained HTML with headless Chrome. Returns None if absent.
 
@@ -251,7 +303,7 @@ def _print_with_chrome(html):
     This statement is fully self-contained -- every asset is already a data URI,
     with no relative links to rewrite -- so URL scrubbing buys nothing here.
     """
-    chrome = shutil.which("google-chrome") or shutil.which("google-chrome-stable")
+    chrome = chrome_path()
     if not chrome:
         return None
 
@@ -493,11 +545,71 @@ def make_arabic_searchable(pdf_bytes):
         return pdf_bytes
 
 
+def install_chrome(version=None):
+    """Download chrome-headless-shell into ``<bench>/chrome`` and use it.
+
+    For container images where ``apt install`` is not an option. Run once from
+    the bench:
+
+        bench --site <site> execute \
+          agricultural_marketing.agricultural_marketing.page.supplier_statement_forms_v2.supplier_statement_forms_v2.install_chrome
+
+    It survives restarts but not image rebuilds -- put ``<bench>/chrome`` on a
+    volume, or bake the browser into the image, if the container is disposable.
+    """
+    import io as _io
+    import json as _json
+    import stat
+    import urllib.request
+    import zipfile
+
+    bench_path = frappe.utils.get_bench_path()
+    target_dir = os.path.join(bench_path, "chrome")
+
+    feed = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+    with urllib.request.urlopen(feed, timeout=60) as response:
+        channels = _json.loads(response.read())
+
+    channel = channels["channels"]["Stable"]
+    if version:
+        channel = dict(channel, version=version)
+
+    url = next(
+        entry["url"]
+        for entry in channel["downloads"]["chrome-headless-shell"]
+        if entry["platform"] == "linux64"
+    )
+
+    with urllib.request.urlopen(url, timeout=600) as response:
+        archive = zipfile.ZipFile(_io.BytesIO(response.read()))
+        archive.extractall(target_dir)
+
+    # The zip nests everything under chrome-headless-shell-linux64/.
+    binary = None
+    for root, _dirs, files in os.walk(target_dir):
+        if "chrome-headless-shell" in files:
+            binary = os.path.join(root, "chrome-headless-shell")
+            break
+
+    if not binary:
+        frappe.throw(_("chrome-headless-shell not found in the downloaded archive"))
+
+    final = os.path.join(target_dir, "chrome-headless-shell")
+    if binary != final:
+        os.replace(binary, final)
+
+    os.chmod(final, os.stat(final).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+    return {"version": channel["version"], "path": final, "engine": pdf_engine_info()}
+
+
 def pdf_engine_info():
     """Reported in the UI so the user always knows which engine will be used."""
-    if shutil.which("google-chrome") or shutil.which("google-chrome-stable"):
+    resolved = chrome_path()
+    if resolved:
         return {
             "engine": "google-chrome",
+            "path": resolved,
             "searchable_arabic": True,
             "message": _("PDFs are rendered with headless Google Chrome (searchable Arabic text)."),
         }
