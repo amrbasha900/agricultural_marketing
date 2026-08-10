@@ -17,6 +17,46 @@ PROGRESS_EVENT = "bulk_invoice_forms_progress"
 
 
 class BulkInvoiceForm(Document):
+    def validate(self):
+        self.validate_customer_is_not_the_supplier()
+
+    def validate_customer_is_not_the_supplier(self):
+        """A farmer must never be billed as the buyer of their own produce.
+
+        Almost every supplier here has a customer record under the same code
+        (2693 of 2704 on the live site), so plain code equality catches nearly
+        all of it. `Supplier.related_customer` is the durable link between the
+        two records -- the same one before_submit already relies on -- and it
+        catches the handful of pairs whose codes differ.
+
+        The customer picker hides these already; this is the backstop for a
+        code typed straight into the quick entry bar or set by an import.
+        """
+        suppliers = {row.supplier for row in self.items if row.supplier}
+        coupled = (
+            dict(
+                frappe.get_all(
+                    "Supplier",
+                    filters={"name": ("in", list(suppliers))},
+                    fields=["name", "related_customer"],
+                    as_list=True,
+                )
+            )
+            if suppliers
+            else {}
+        )
+
+        for row in self.items:
+            if not row.customer or not row.supplier:
+                continue
+            if row.customer == row.supplier or row.customer == coupled.get(row.supplier):
+                frappe.throw(
+                    _("Row {0}: customer {1} is the same party as supplier {2}. Choose a different customer.").format(
+                        row.idx, frappe.bold(row.customer), frappe.bold(row.supplier)
+                    ),
+                    title=_("Customer and supplier are the same party"),
+                )
+
     def before_save(self):
         """Handle updates before saving - only calculate totals"""
         # Only calculate totals, no automatic invoice form operations
@@ -1019,27 +1059,44 @@ def get_filtered_customers(doctype, txt, searchfield, start, page_len, filters):
     1. Must be a customer (is_customer = 1)
     2. Must not be frozen (is_frozen = 0)
     3. If couple_customer is checked, they must have a related supplier
+    4. Must not be the party behind `filters.exclude_supplier` -- see
+       is_own_customer(). The row's supplier is passed in from the grid so a
+       farmer can never be picked as the buyer of their own produce.
     """
+    exclude = (filters or {}).get("exclude_supplier") or ""
+
     # Base query for customers
     query = """
-        SELECT name, customer_name 
-        FROM `tabCustomer` 
-        WHERE is_customer = 1 
+        SELECT name, customer_name
+        FROM `tabCustomer`
+        WHERE is_customer = 1
         AND is_frozen = 0
         AND (name LIKE %(txt)s OR customer_name LIKE %(txt)s)
         AND (
-            couple_customer = 0 
+            couple_customer = 0
             OR EXISTS (
-                SELECT 1 FROM `tabSupplier` 
+                SELECT 1 FROM `tabSupplier`
                 WHERE related_customer = `tabCustomer`.name
+            )
+        )
+        AND (
+            %(exclude)s = ''
+            OR (
+                name != %(exclude)s
+                AND NOT EXISTS (
+                    SELECT 1 FROM `tabSupplier`
+                    WHERE name = %(exclude)s
+                    AND related_customer = `tabCustomer`.name
+                )
             )
         )
         ORDER BY name ASC
         LIMIT %(start)s, %(page_len)s
     """
-    
+
     return frappe.db.sql(query, {
         "txt": "%%%s%%" % txt,
+        "exclude": exclude,
         "start": start,
         "page_len": page_len
     })

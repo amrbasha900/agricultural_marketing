@@ -423,6 +423,9 @@ function setup_filters(frm) {
     frm.set_query("default_customer", function () {
         return {
             query: "agricultural_marketing.agricultural_marketing.doctype.bulk_invoice_form.bulk_invoice_form.get_filtered_customers",
+            // Never offer the default supplier's own customer record as the
+            // default buyer -- see validate_customer_is_not_the_supplier().
+            filters: { exclude_supplier: frm.doc.default_supplier || "" },
         };
     });
     
@@ -457,9 +460,15 @@ function setup_child_table_filters(frm) {
     
     // Customer filter
     if (frm.fields_dict['items'].grid.get_field("customer")) {
-        frm.fields_dict['items'].grid.get_field("customer").get_query = function () {
+        frm.fields_dict['items'].grid.get_field("customer").get_query = function (doc, cdt, cdn) {
+            // Hide the row's own supplier: a farmer must not be billed as the
+            // buyer of their own produce. The link query resolves the supplier
+            // to its coupled customer too, so the pairs whose codes differ are
+            // excluded as well. See validate_customer_is_not_the_supplier().
+            const row = locals[cdt] && locals[cdt][cdn];
             return {
                 query: "agricultural_marketing.agricultural_marketing.doctype.bulk_invoice_form.bulk_invoice_form.get_filtered_customers",
+                filters: { exclude_supplier: (row && row.supplier) || "" },
             };
         };
     }

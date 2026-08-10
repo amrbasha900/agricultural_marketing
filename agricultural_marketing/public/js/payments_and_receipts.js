@@ -311,13 +311,15 @@ frappe.ui.form.on("Payments and Receipts", {
     },
  	setup: function (frm) {
         //eval:in_list(["Receive", "Pay"], doc.payment_type)
-        if(cur_frm.doc.references[0].party) {
+        // On a new doc the table is empty -- reading references[0].party directly
+        // throws and aborts the rest of the form's setup/refresh chain.
+        const first_reference = (frm.doc.references || [])[0];
+        if (first_reference && first_reference.party) {
             frm.set_df_property('party_type', 'read_only', 1);
-            console.log(frm.doc.references.length)
         } else {
             frm.set_df_property('party_type', 'read_only', 0);
-            console.log(frm.doc.references.length)
         }
+        toggle_payment_type_read_only(frm);
         frm.set_query("party_type", function () {
 			return {
 				filters: {
@@ -361,9 +363,12 @@ frappe.ui.form.on("Payments Receipts Reference", {
         };
         let row = frm.selected_doc;
         frappe.model.set_value(row.doctype, row.name, "party_type", frm.doc.party_type);
+        // Both branches keep PARTY_SORTED_BY_CODE_QUERY: without it the party list
+        // falls back to Frappe's relevance ranking (typing "1" puts 1001 before 0001).
         if (row.party_type == "Customer") {
             frm.fields_dict['references'].grid.get_field("party").get_query = function() {
                 return {
+                    query: PARTY_SORTED_BY_CODE_QUERY,
                     filters: {
                         is_customer: 1,
                         couple_customer: 0
@@ -371,7 +376,11 @@ frappe.ui.form.on("Payments Receipts Reference", {
                 }
             };
         } else {
-            frm.fields_dict['references'].grid.get_field("party").get_query = "";
+            frm.fields_dict['references'].grid.get_field("party").get_query = function() {
+                return {
+                    query: PARTY_SORTED_BY_CODE_QUERY
+                }
+            };
         }
         frappe.model.set_value(row.doctype, row.name, "mode_of_payment", frm.doc.mode_of_payment);
         if (row.mode_of_payment) {
@@ -385,6 +394,7 @@ frappe.ui.form.on("Payments Receipts Reference", {
         frm.refresh_field();
 
         frm.set_df_property('party_type', 'read_only', 1);
+        toggle_payment_type_read_only(frm);
 
     },
     mode_of_payment: function (frm, cdt, cdn) {
@@ -403,6 +413,8 @@ frappe.ui.form.on("Payments Receipts Reference", {
     },
     party: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
+        // Picking (or clearing) a party is what locks / unlocks payment_type.
+        toggle_payment_type_read_only(frm);
         if (row.party) {
             frappe.call({
                 method: "payment_management.payment_management.doctype.payments_and_receipts.payments_and_receipts.get_party_account_and_bank_details",
@@ -429,6 +441,7 @@ frappe.ui.form.on("Payments Receipts Reference", {
         if(!frm.doc.references || frm.doc.references.length === 0) {
             frm.set_df_property('party_type', 'read_only', 0);
         }
+        toggle_payment_type_read_only(frm);
     },
     
 });

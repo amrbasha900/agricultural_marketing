@@ -62,6 +62,13 @@ frappe.provide("agrimkt.bulk_quick_entry");
 				name_field: "customer_name",
 				reqd: true,
 				grow: 2,
+				// A farmer must not be billed as the buyer of their own produce.
+				// The customer record almost always carries the supplier's code,
+				// so drop it from the list as soon as a supplier is picked. The
+				// catalog is in memory and holds no supplier/customer coupling,
+				// so the rarer pairs whose codes differ are caught server side by
+				// BulkInvoiceForm.validate_customer_is_not_the_supplier().
+				exclude: (bar) => bar && bar.cells.supplier && bar.cells.supplier.value,
 			},
 			// Pamper is deliberately not a column here: it is optional and, when
 			// it applies at all, it is the same for the whole document. commit()
@@ -266,7 +273,16 @@ frappe.provide("agrimkt.bulk_quick_entry");
 		}
 
 		render(results, header) {
-			this.results = results || [];
+			results = results || [];
+
+			// Every path into the list -- typing, the recent picks, the live
+			// server fallback -- lands here, so one filter covers them all. A
+			// value can only be committed through choose(), which reads
+			// this.results, so a hidden code cannot be selected at all.
+			const excluded = this.def.exclude && this.def.exclude(this.bar);
+			if (excluded) results = results.filter((r) => r.code !== excluded);
+
+			this.results = results;
 			this.active = this.results.length ? 0 : -1;
 
 			if (!this.results.length) {
@@ -511,6 +527,9 @@ frappe.provide("agrimkt.bulk_quick_entry");
 				const common = {
 					$input: $input,
 					def: def,
+					// Cells need to see their siblings: the customer picker
+					// hides whatever the supplier cell currently holds.
+					bar: this,
 					on_advance: () => this.advance(def.fieldname),
 					on_commit: () => this.commit(),
 				};
@@ -691,6 +710,20 @@ frappe.provide("agrimkt.bulk_quick_entry");
 				// Carry the resolved name so the row needs no fetch_from lookup.
 				if (def.name_field) values[def.name_field] = cell.get_label();
 			});
+
+			// The customer list hides the supplier, but the cells can be filled
+			// in any order: picking the customer first and the supplier second
+			// leaves the pair matching with nothing to re-filter. Refuse the row
+			// here rather than letting the document fail on save.
+			if (!first_bad && values.customer && values.customer === values.supplier) {
+				this.cells.customer.set_invalid(true);
+				this.cells.customer.focus();
+				frappe.show_alert({
+					message: __("Customer {0} is the same party as the supplier", [values.customer]),
+					indicator: "red",
+				});
+				return null;
+			}
 
 			if (first_bad) {
 				this.cells[first_bad].focus();

@@ -710,7 +710,7 @@ def build_qr(company_profile, supplier, filters, closing_balance):
 # ---------------------------------------------------------------------------
 
 
-def build_ledger_rows(value, filters):
+def build_ledger_rows(value, filters, party=None):
     """Flatten sales, purchases, commission and payments into one ledger.
 
     Returns ``(rows, aggregates)``.  Debit (مدين / عليه) and credit (دائن / له)
@@ -727,9 +727,24 @@ def build_ledger_rows(value, filters):
     selling_total = _total_row(value.get("items"), "invoice_id")
     buying_total = _total_row(value.get("buying_items"), "invoice_id")
 
+    # Account columns. With neglect_items the invoice rows are collapsed, so a
+    # row no longer maps to one item -- and therefore not to one customer.
+    party = party or filters.get("party")
+    if party and not neglect_items:
+        selling_customers, buying_suppliers = _counterparty_maps(filters, party)
+    else:
+        selling_customers, buying_suppliers = {}, {}
+
+    books = _book_numbers(
+        [i.get("invoice_id") for i in selling] + [i.get("invoice_id") for i in buying]
+    )
+
     entries = []
 
     for item in selling:
+        # Consume in V1's order so repeated items land on the right customer.
+        queue = selling_customers.get((item.get("invoice_id"), item.get("item_name")))
+        customer = queue.pop(0) if queue else ""
         entries.append(
             {
                 "sort_key": (item.get("date"), 0),
@@ -738,10 +753,14 @@ def build_ledger_rows(value, filters):
                 "price": item.get("price"),
                 "debit": 0,
                 "credit": flt(item.get("total")),
+                "supplier_code": party or "",
+                "customer_code": customer,
+                "book_no": books.get(item.get("invoice_id"), ""),
             }
         )
 
     for item in buying:
+        # Mirror image of a selling row: here the party is the customer.
         entries.append(
             {
                 "sort_key": (item.get("date"), 1),
@@ -750,6 +769,9 @@ def build_ledger_rows(value, filters):
                 "price": item.get("price"),
                 "debit": flt(item.get("total")),
                 "credit": 0,
+                "supplier_code": buying_suppliers.get(item.get("invoice_id"), ""),
+                "customer_code": party or "",
+                "book_no": books.get(item.get("invoice_id"), ""),
             }
         )
 
@@ -763,6 +785,8 @@ def build_ledger_rows(value, filters):
                 "price": None,
                 "debit": amount if amount > 0 else 0,
                 "credit": abs(amount) if amount < 0 else 0,
+                "supplier_code": party or "",
+                "customer_code": "",
             }
         )
 
@@ -779,6 +803,8 @@ def build_ledger_rows(value, filters):
                 "price": None,
                 "debit": commission,
                 "credit": 0,
+                "supplier_code": party or "",
+                "customer_code": "",
             }
         )
 
@@ -795,6 +821,9 @@ def build_ledger_rows(value, filters):
                 "credit": money(credit, hide_decimal),
                 "debit_raw": debit,
                 "credit_raw": credit,
+                "book_no": last_five(entry.get("book_no")),
+                "supplier_code": last_five(entry.get("supplier_code")),
+                "customer_code": last_five(entry.get("customer_code")),
             }
         )
 
@@ -811,6 +840,92 @@ def build_ledger_rows(value, filters):
     }
 
     return rows, aggregates
+
+
+def last_five(value):
+    """Last five digits of a code -- what the printed statement shows.
+
+    Codes carry a prefix that never varies inside one statement (supplier
+    2010046, bulk form B-INV-26-00014), so only the tail is meaningful to the
+    reader. Non-digits are dropped first, and a shorter code is returned whole.
+    """
+    digits = re.sub(r"\D", "", str(value or ""))
+    return digits[-5:] if digits else ""
+
+
+def _book_numbers(invoice_ids):
+    """Invoice Form -> the Bulk Invoice Form it was generated from.
+
+    Bulk Invoice Form Item.reference_invoice_form is the only reliable link;
+    the Invoice Form's name merely tends to start with the bulk form's name.
+    """
+    invoice_ids = [i for i in set(invoice_ids) if i]
+    if not invoice_ids:
+        return {}
+
+    rows = frappe.get_all(
+        "Bulk Invoice Form Item",
+        filters={"reference_invoice_form": ["in", invoice_ids]},
+        fields=["parent", "reference_invoice_form"],
+        limit=0,
+    )
+    return {row.reference_invoice_form: row.parent for row in rows}
+
+
+def _counterparty_maps(filters, party):
+    """Per-row supplier/customer codes for the two account columns.
+
+    V1's queries never select ``Invoice Form Item.customer`` (selling rows) or
+    the invoice's own supplier (buying rows), and V1 must not be touched -- so
+    V2 asks for just those two columns separately.
+
+    Amounts still come from V1, so nothing here can move a number. The selling
+    map is keyed by ``(invoice, item_name)`` and holds a *list*, because one
+    invoice can sell the same item to several customers; rows are consumed in
+    order using V1's own ``posting_date, name, item_name`` sort, so the Nth row
+    V1 produced lines up with the Nth customer here.
+    """
+    invform = frappe.qb.DocType("Invoice Form")
+    invformitem = frappe.qb.DocType("Invoice Form Item")
+
+    def base_query():
+        query = (
+            frappe.qb.from_(invform)
+            .left_join(invformitem)
+            .on(invformitem.parent == invform.name)
+            .where(invform.company == filters.get("company"))
+        )
+        query = v1.validate_and_apply_date_filters(filters, query, invform)
+        if filters.get("consider_draft"):
+            return query.where(invform.docstatus.isin([0, 1]))
+        return query.where(invform.docstatus == 1)
+
+    selling = {}
+    rows = (
+        base_query()
+        .where(invform.supplier == party)
+        .select(invform.name.as_("invoice_id"), invformitem.item_name, invformitem.customer)
+        .orderby(invform.posting_date)
+        .orderby(invform.name)
+        .orderby(invformitem.item_name)
+        .run(as_dict=True)
+    )
+    for row in rows:
+        selling.setdefault((row.invoice_id, row.item_name), []).append(row.customer or "")
+
+    # A buying row's seller is a property of the invoice, so a plain map is enough.
+    buying = {}
+    rows = (
+        base_query()
+        .where(invformitem.customer == party)
+        .where(invform.supplier != invformitem.customer)
+        .select(invform.name.as_("invoice_id"), invform.supplier)
+        .run(as_dict=True)
+    )
+    for row in rows:
+        buying[row.invoice_id] = row.supplier or ""
+
+    return selling, buying
 
 
 def _flip_negatives(debit, credit):
@@ -911,7 +1026,7 @@ def build_context(filters, party, party_data):
     closing_balance = flt(closing.get("balance"))
     period_balance = closing_balance - opening_balance
 
-    rows, aggregates = build_ledger_rows(party_data, filters)
+    rows, aggregates = build_ledger_rows(party_data, filters, party)
 
     company_profile = get_company_profile(filters.get("company"))
     supplier = get_supplier_profile(party)
@@ -1005,9 +1120,10 @@ def render_statement(filters, party, party_data=None):
         scoped = dict(filters)
         scoped["party"] = party
         data = v1.get_data(frappe._dict(), scoped)
-        if not data or party not in data:
-            frappe.throw(_("No data found for supplier: {0}").format(party))
-        party_data = data[party]
+        # A supplier with no movement in the period still has a statement worth
+        # printing: the carried-forward balance over an empty ledger. Only the
+        # rows are missing, never the balances.
+        party_data = (data or {}).get(party) or {}
         filters = scoped
 
     context = build_context(filters, party, party_data)
@@ -1027,6 +1143,12 @@ def get_parties_with_data(filters):
 
     data = v1.get_data(frappe._dict(), filters)
     parties = sorted(data.keys()) if data else []
+
+    # An explicitly chosen supplier always belongs in the navigator, even with
+    # no movement -- its statement still carries a balance.
+    chosen = filters.get("party")
+    if chosen and chosen not in parties:
+        parties.insert(0, chosen)
 
     names = {}
     if parties:
@@ -1053,13 +1175,18 @@ def get_statement_preview(filters, party=None):
     if party:
         filters["party"] = party
 
-    data = v1.get_data(frappe._dict(), filters)
-    if not data:
+    data = v1.get_data(frappe._dict(), filters) or {}
+    chosen = filters.get("party")
+
+    if chosen:
+        # Explicitly picked: always render, even if the period is empty.
+        target = chosen
+    elif data:
+        target = sorted(data.keys())[0]
+    else:
         return {"error": _("No data matches the chosen criteria")}
 
-    target = filters.get("party") if filters.get("party") in data else sorted(data.keys())[0]
-
-    html, context = render_statement(filters, target, data[target])
+    html, context = render_statement(filters, target, data.get(target) or {})
 
     return {
         "party": target,
@@ -1253,11 +1380,11 @@ def generate_single_supplier_pdf_v2(log_id, supplier_name=None, history_id=None)
         filters["from_date"] = str(log_doc.from_date) if log_doc.from_date else filters.get("from_date")
         filters["to_date"] = str(log_doc.to_date) if log_doc.to_date else filters.get("to_date")
 
-        data = v1.get_data(frappe._dict(), filters)
-        if not data or actual_supplier not in data:
-            raise ValueError("No data found for supplier: {0}".format(actual_supplier))
+        data = v1.get_data(frappe._dict(), filters) or {}
 
-        html, _context = render_statement(filters, actual_supplier, data[actual_supplier])
+        html, _context = render_statement(
+            filters, actual_supplier, data.get(actual_supplier) or {}
+        )
         content = get_pdf_bytes(html)
 
         file_doc = frappe.new_doc("File")
