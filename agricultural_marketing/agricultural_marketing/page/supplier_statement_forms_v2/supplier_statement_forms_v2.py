@@ -225,9 +225,7 @@ def get_pdf_bytes(html, options=None):
     content = _print_with_chrome(html)
 
     if content is None:
-        from frappe.utils.pdf import get_pdf as wkhtmltopdf_get_pdf
-
-        return wkhtmltopdf_get_pdf(html, options)
+        return _print_with_wkhtmltopdf(html) or b""
 
     # Chrome's own /ToUnicode maps land on presentation forms, so the PDF is not
     # searchable in Arabic until we rewrite them.
@@ -245,6 +243,68 @@ CHROME_BINARIES = (
     "chrome-headless-shell",
     "headless_shell",
 )
+
+
+def _print_with_wkhtmltopdf(html):
+    """Fallback renderer, invoked directly rather than via frappe.utils.pdf.
+
+    ``frappe.utils.pdf.get_pdf`` runs the markup through ``expand_relative_urls``
+    (frappe/utils/data.py), which appends " !important" after *every* CSS
+    ``url(...)`` as a background-image workaround::
+
+        src: url(data:font/woff2;base64,...) format('woff2')
+        ->  src: url(data:font/woff2;base64,...) !important format('woff2')
+
+    That is invalid inside a src list, so the whole @font-face is discarded and
+    the statement silently reverts to DejaVu. Nothing in this document uses a
+    relative URL, so the rewrite has nothing to gain here anyway.
+    """
+    binary = shutil.which("wkhtmltopdf")
+    if not binary:
+        return None
+
+    pdf_path = os.path.join(tempfile.gettempdir(), "{0}.pdf".format(frappe.generate_hash()))
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".html", delete=True, encoding="utf-8"
+        ) as html_file:
+            html_file.write(html)
+            html_file.flush()
+
+            subprocess.run(
+                [
+                    binary,
+                    "--quiet",
+                    "--encoding", "UTF-8",
+                    "--print-media-type",
+                    "--page-size", "A4",
+                    # The sheet draws its own frame; margins live in the CSS.
+                    "--margin-top", "0",
+                    "--margin-bottom", "0",
+                    "--margin-left", "0",
+                    "--margin-right", "0",
+                    html_file.name,
+                    pdf_path,
+                ],
+                shell=False,
+                check=False,
+                capture_output=True,
+                timeout=600,
+            )
+
+        if not os.path.exists(pdf_path):
+            frappe.log_error(
+                message="wkhtmltopdf produced no PDF at {0}".format(pdf_path),
+                title="Supplier Statement V2 - PDF",
+            )
+            return None
+
+        with open(pdf_path, "rb") as f:
+            return f.read()
+    finally:
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
 
 
 def chrome_path():
@@ -785,8 +845,20 @@ def get_company_profile(company):
             profile["cr_no"] = str(value).strip().splitlines()[0]
             break
 
-    phones = [doc.get("phone_no"), doc.get("mobile_no")]
-    profile["phone"] = " / ".join([p for p in phones if p])
+    # Two contact numbers, joined only when both are filled -- one on its own
+    # prints alone, with no stray separator. (Company has no standard mobile_no;
+    # custom_mobile_no is this app's field.)
+    phones = [doc.get("phone_no"), doc.get("custom_mobile_no")]
+    profile["phone"] = " / ".join([str(p).strip() for p in phones if p and str(p).strip()])
+
+    # An explicit statement address wins: the linked Address record is a
+    # postal/tax record and rarely reads well in a printed header.
+    statement_address = (doc.get("custom_statement_address") or "").strip()
+    if statement_address:
+        profile["address_lines"] = [
+            line.strip() for line in statement_address.splitlines() if line.strip()
+        ]
+        return profile
 
     try:
         address_name = frappe.db.get_value(
@@ -1124,8 +1196,22 @@ def _describe_item(item, neglect_items):
     )
 
 
+#: Payment Entry.payment_type -> what the voucher is called on the statement.
+#: Named from the company's books, which is what the supplier is being shown:
+#: money going out to them is a disbursement, money coming back is a receipt.
+VOUCHER_LABELS = {
+    "Pay": "سند صرف",
+    "Receive": "سند قبض",
+    "Internal Transfer": "سند تحويل",
+}
+
+
 def _describe_payment(payment):
-    parts = ["{} {}".format(_("سند"), payment.get("payment_id") or "")]
+    # Note V1's template tests payment.mop against "Pay"/"Receive"; mop is the
+    # mode of payment (شبكة, بنك الراجحي...), so that test never matches. The
+    # voucher direction lives in payment_type.
+    voucher = VOUCHER_LABELS.get(payment.get("payment_type"), _("سند"))
+    parts = ["{} {}".format(voucher, payment.get("payment_id") or "").strip()]
 
     mop = payment.get("mop")
     if mop:
@@ -1287,7 +1373,23 @@ def render_statement(filters, party, party_data=None):
         filters = scoped
 
     context = build_context(filters, party, party_data)
-    return frappe.render_template(read_template(), context), context
+    html = frappe.render_template(read_template(), context)
+
+    # Prepended here rather than templated in: a Jinja tag inside <style> keeps
+    # getting mangled by editor CSS formatters, which drops the embedded font
+    # silently and makes every PDF fall back to DejaVu.
+    font_css = context.get("font_css") or ""
+    if font_css:
+        # After the charset meta, not before it: wkhtmltopdf's older engine wants
+        # the encoding declared first and ignores the face otherwise.
+        marker = '<meta charset="utf-8">'
+        style = "<style>\n{0}\n</style>".format(font_css)
+        if marker in html:
+            html = html.replace(marker, marker + "\n" + style, 1)
+        else:
+            html = style + "\n" + html
+
+    return html, context
 
 
 # ---------------------------------------------------------------------------

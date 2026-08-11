@@ -307,7 +307,10 @@ fixtures = [
         "Item Group-custom_commission_item",
         "Supplier-custom_charge_percentage",
         "Supplier-custom_apply_charges",
-        "Payments Receipts Reference-invoice_form"
+        "Payments Receipts Reference-invoice_form",
+        "Company-custom_cr_no",
+        "Company-custom_statement_address",
+        "Company-custom_mobile_no"
         ]]]},
         {"dt": "Statement Form Template", "filters": [["name", "in", [
         "أساسي","نموذج 2", "نموذج 1","نموذج 3"]]]},

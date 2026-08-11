@@ -32,19 +32,29 @@
 <table class="table table-bordered">
     <thead>
         <tr>
-            <th style="width: 25%">{%= __("Invoice No") %}</th>
-            <th style="width: 10%">{%= __("Date") %}</th>
-            <th style="width: 10%">{%= __("Item") %}</th>
-            <th style="width: 8%">{%= __("Quantity") %}</th>
-            <th style="width: 8%">{%= __("Price") %}</th>
-            <th style="width: 8%">{%= __("Total") %}</th>
+            <th style="width: 14%">{%= __("Invoice No") %}</th>
+            <th style="width: 10%">{%= __("Bulk Invoice") %}</th>
+            <th style="width: 8%">{%= __("Date") %}</th>
+            <th style="width: 7%">{%= __("Supplier Code") %}</th>
+            <th style="width: 14%">{%= __("Supplier Name") %}</th>
+            <th style="width: 7%">{%= __("Customer Code") %}</th>
+            <th style="width: 14%">{%= __("Customer Name") %}</th>
+            <th style="width: 8%">{%= __("Item") %}</th>
+            <th style="width: 6%">{%= __("Quantity") %}</th>
+            <th style="width: 6%">{%= __("Price") %}</th>
+            <th style="width: 6%">{%= __("Total") %}</th>
         </tr>
     </thead>
     <tbody>
         {% for(var i=0, l=data.length; i< l; i++) { %}
             <tr>
                 <td>{%= data[i]["invoice_id"] %}</td>
+                <td>{%= data[i]["bulk_invoice"] || "" %}</td>
                 <td>{%= data[i]["date"] %}</td>
+                <td>{%= data[i]["supplier"] || "" %}</td>
+                <td>{%= data[i]["supplier_name"] || "" %}</td>
+                <td>{%= data[i]["customer"] || "" %}</td>
+                <td>{%= data[i]["customer_name"] || "" %}</td>
                 <td>{%= data[i]["item_name"] %}</td>
                 <td> {% if data[i]["qty"] %}
                         {%= data[i]["qty"] %}

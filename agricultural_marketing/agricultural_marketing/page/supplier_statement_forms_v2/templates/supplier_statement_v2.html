@@ -7,8 +7,13 @@
 -->
 <meta charset="utf-8">
 
-<!-- prettier-ignore -->
-<style>{{ font_css }}</style>
+<!--
+    The @font-face block is NOT here on purpose. Editor CSS formatters
+    rewrite Jinja braces inside <style> into broken rules -- it happened
+    three times and silently dropped the embedded font, so the PDF fell
+    back to DejaVu without any error. render_statement() prepends it in
+    Python instead, where no formatter can reach it.
+-->
 
 <!--
     The stylesheet below contains NO template placeholders on purpose.  Editor
@@ -46,10 +51,10 @@
            these properties do not touch. */
         font-variant-ligatures: none;
         font-feature-settings: "liga" 0,
-        "clig" 0,
-        "dlig" 0,
-        "hlig" 0,
-        "rlig" 0;
+            "clig" 0,
+            "dlig" 0,
+            "hlig" 0,
+            "rlig" 0;
     }
 
     /* Sizes arrive as custom properties on the wrapper's style attribute.
@@ -103,12 +108,17 @@
         font-size: 0.92em;
     }
 
-    .head .side.left {
-        text-align: left;
+    /* Each block is centred inside its own half of the header, with the title
+       centred between them. */
+    .head .side.left,
+    .head .side.right {
+        text-align: center;
     }
 
-    .head .side.right {
-        text-align: right;
+    /* Fixed slot height keeps an empty line occupying space, so the two sides
+       stay level even when one of them has nothing to show. */
+    .head .side .line {
+        min-height: 1.7em;
     }
 
     .head .middle {
@@ -118,8 +128,8 @@
     }
 
     .org-name {
-        font-weight: 700;
-        font-size: 1.05em;
+        font-weight: 800;
+        font-size: 1.5em;
     }
 
     .doc-title {
@@ -182,9 +192,10 @@
         height: 22mm;
     }
 
+    /* Equal flexible halves either side of the QR, which is the only fixed
+       item -- that is what puts it in the exact centre of the band. */
     .band .balances {
-        flex: 0 0 auto;
-        min-width: 68mm;
+        flex: 1 1 0;
     }
 
     .band .balances table {
@@ -302,18 +313,20 @@
     }
 </style>
 
-<div class="doc" dir="{{ direction }}" lang="ar"
-     style="--fs: {{ font_size }}px; --fs-table: {{ table_font_size }}px;">
+<div class="doc" dir="{{ direction }}" lang="ar" style="--fs: {{ font_size }}px; --fs-table: {{ table_font_size }}px;">
     {% for page in pages %}
     <div class="sheet">
         <div class="frame">
 
             <!-- ================= header ================= -->
             <div class="head">
+                <!-- Both sides render exactly three slots, empty ones included, so
+                     the two columns keep the same height and their lines stay on
+                     the same baselines however much data a company has. -->
                 <div class="side right">
-                    <div class="org-name">{{ company.name }}</div>
-                    {% if company.cr_no %}<div>سجل تجاري {{ company.cr_no }}</div>{% endif %}
-                    {% if company.phone %}<div>جوال {{ company.phone }}</div>{% endif %}
+                    <div class="line org-name">{{ company.name }}</div>
+                    <div class="line">{% if company.cr_no %}سجل تجاري : {{ company.cr_no }}{% endif %}</div>
+                    <div class="line">{% if company.phone %}جوال : {{ company.phone }}{% endif %}</div>
                 </div>
 
                 <div class="middle">
@@ -325,8 +338,9 @@
                 </div>
 
                 <div class="side left">
-                    {% for line in company.address_lines %}<div>{{ line }}</div>{% endfor %}
-                    {% if company.tax_id %}<div>رقم ضريبي {{ company.tax_id }}</div>{% endif %}
+                    <div class="line">{{ company.address_lines[0] if company.address_lines|length > 0 }}</div>
+                    <div class="line">{{ company.address_lines[1] if company.address_lines|length > 1 }}</div>
+                    <div class="line">{% if company.tax_id %}رقم ضريبي : {{ company.tax_id }}{% endif %}</div>
                 </div>
             </div>
 
@@ -425,49 +439,49 @@
                 <tfoot>
                     <tr class="totals-row">
                         <td colspan="9">
-                        <table class="totals">
-                            <tr>
-                                <td class="caption">حركة الاصناف</td>
-                                <td class="tag">مبلغ مدين</td>
-                                <td class="amount num">{{ totals.items_debit }}</td>
-                                <td class="tag">مبلغ دائن</td>
-                                <td class="amount num">{{ totals.items_credit }}</td>
-                            </tr>
-                            <tr>
-                                <td class="caption">سعي الاصناف</td>
-                                <td class="tag">مبلغ مدين</td>
-                                <td class="amount num">{{ totals.commission_debit }}</td>
-                                <td class="tag">مبلغ دائن</td>
-                                <td class="amount num">{{ totals.commission_credit }}</td>
-                            </tr>
-                            <tr>
-                                <td class="caption">صافي الاصناف</td>
-                                <td class="tag">مبلغ مدين</td>
-                                <td class="amount num">{{ totals.net_items_debit }}</td>
-                                <td class="tag">مبلغ دائن</td>
-                                <td class="amount num">{{ totals.net_items_credit }}</td>
-                            </tr>
-                            <tr>
-                                <td class="caption">حركة ماليه</td>
-                                <td class="tag">مبلغ مدين</td>
-                                <td class="amount num">{{ totals.cash_debit }}</td>
-                                <td class="tag">مبلغ دائن</td>
-                                <td class="amount num">{{ totals.cash_credit }}</td>
-                            </tr>
-                            <tr>
-                                <td class="caption">كمية الاصناف</td>
-                                <td class="tag">كمية صادرة</td>
-                                <td class="amount num">{{ totals.qty_out }}</td>
-                                <td class="tag">كمية واردة</td>
-                                <td class="amount num">{{ totals.qty_in }}</td>
-                            </tr>
-                            <tr>
-                                <td class="net" colspan="5">
-                                    الصافي ({{ totals.net_label }}) {{ totals.net_side }} مبلغ:
-                                    <span class="num">{{ totals.net_amount }}</span> ريال
-                                </td>
-                            </tr>
-                        </table>
+                            <table class="totals">
+                                <tr>
+                                    <td class="caption">حركة الاصناف</td>
+                                    <td class="tag">مبلغ مدين</td>
+                                    <td class="amount num">{{ totals.items_debit }}</td>
+                                    <td class="tag">مبلغ دائن</td>
+                                    <td class="amount num">{{ totals.items_credit }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="caption">سعي الاصناف</td>
+                                    <td class="tag">مبلغ مدين</td>
+                                    <td class="amount num">{{ totals.commission_debit }}</td>
+                                    <td class="tag">مبلغ دائن</td>
+                                    <td class="amount num">{{ totals.commission_credit }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="caption">صافي الاصناف</td>
+                                    <td class="tag">مبلغ مدين</td>
+                                    <td class="amount num">{{ totals.net_items_debit }}</td>
+                                    <td class="tag">مبلغ دائن</td>
+                                    <td class="amount num">{{ totals.net_items_credit }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="caption">حركة ماليه</td>
+                                    <td class="tag">مبلغ مدين</td>
+                                    <td class="amount num">{{ totals.cash_debit }}</td>
+                                    <td class="tag">مبلغ دائن</td>
+                                    <td class="amount num">{{ totals.cash_credit }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="caption">كمية الاصناف</td>
+                                    <td class="tag">كمية صادرة</td>
+                                    <td class="amount num">{{ totals.qty_out }}</td>
+                                    <td class="tag">كمية واردة</td>
+                                    <td class="amount num">{{ totals.qty_in }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="net" colspan="5">
+                                        الصافي ({{ totals.net_label }}) {{ totals.net_side }} مبلغ:
+                                        <span class="num">{{ totals.net_amount }}</span> ريال
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                 </tfoot>

@@ -12,9 +12,23 @@ def execute(filters=None):
     invform = frappe.qb.DocType("Invoice Form")
     invformitem = frappe.qb.DocType("Invoice Form Item")
     invformcomm = frappe.qb.DocType("Invoice Form Commission")
+    supplier_dt = frappe.qb.DocType("Supplier")
+    customer_dt = frappe.qb.DocType("Customer")
 
-    invoices_query = frappe.qb.from_(invform).left_join(invformitem).on(
-        invformitem.parent == invform.name).where(invform.company == filters.get('company'))
+    # Supplier/Customer join one-to-one, so they cannot duplicate item rows.
+    # The Bulk Invoice Form link is deliberately NOT joined here: several bulk
+    # rows can point at the same Invoice Form, which would multiply the rows and
+    # inflate every total. It is looked up separately below.
+    invoices_query = (
+        frappe.qb.from_(invform)
+        .left_join(invformitem)
+        .on(invformitem.parent == invform.name)
+        .left_join(supplier_dt)
+        .on(supplier_dt.name == invform.supplier)
+        .left_join(customer_dt)
+        .on(customer_dt.name == invformitem.customer)
+        .where(invform.company == filters.get('company'))
+    )
 
     commission_and_taxes_query = frappe.qb.from_(invform).left_join(invformcomm).on(
         invformcomm.parent == invform.name).where(invform.company == filters.get('company'))
@@ -54,8 +68,20 @@ def execute(filters=None):
     invoices_query = invoices_query.where(invform.docstatus.isin(docstatuses))
     commission_and_taxes_query = commission_and_taxes_query.where(invform.docstatus.isin(docstatuses))
 
-    data = invoices_query.select(invform.name.as_("invoice_id"), invform.posting_date.as_("date"), invformitem.qty,
-                                 invformitem.price, invformitem.total, invformitem.item_name).run(as_dict=True)
+    data = invoices_query.select(
+        invform.name.as_("invoice_id"),
+        invform.posting_date.as_("date"),
+        invform.supplier,
+        supplier_dt.supplier_name,
+        invformitem.customer,
+        customer_dt.customer_name,
+        invformitem.qty,
+        invformitem.price,
+        invformitem.total,
+        invformitem.item_name,
+    ).run(as_dict=True)
+
+    attach_bulk_invoice(data)
 
     commission = (invformcomm.price * invformcomm.commission) / 100
     taxes = (commission * invformcomm.taxes) / 100
@@ -70,6 +96,29 @@ def execute(filters=None):
     company_defaults["address"] = get_company_address(company_defaults['name']).get("company_address_display")
     data.append(company_defaults)
     return columns, data
+
+
+def attach_bulk_invoice(rows):
+    """Fill in the Bulk Invoice Form each Invoice Form was generated from.
+
+    Kept out of the main query on purpose -- Bulk Invoice Form Item can hold
+    several rows pointing at the same Invoice Form, so joining it would multiply
+    the item rows and inflate the totals.
+    """
+    invoice_ids = {row.get("invoice_id") for row in rows if row.get("invoice_id")}
+    if not invoice_ids:
+        return
+
+    links = frappe.get_all(
+        "Bulk Invoice Form Item",
+        filters={"reference_invoice_form": ["in", list(invoice_ids)]},
+        fields=["parent", "reference_invoice_form"],
+        limit=0,
+    )
+    mapping = {link.reference_invoice_form: link.parent for link in links}
+
+    for row in rows:
+        row["bulk_invoice"] = mapping.get(row.get("invoice_id"), "")
 
 
 def calculate_totals(data, commissions_and_taxes):
@@ -124,10 +173,43 @@ def get_columns():
             "width": 150,
         },
         {
+            "fieldname": "bulk_invoice",
+            "label": _("Bulk Invoice"),
+            "fieldtype": "Link",
+            "options": "Bulk Invoice Form",
+            "width": 150,
+        },
+        {
             "fieldname": "date",
             "label": _("Date"),
             "fieldtype": "Date",
             "width": 150,
+        },
+        {
+            "fieldname": "supplier",
+            "label": _("Supplier Code"),
+            "fieldtype": "Link",
+            "options": "Supplier",
+            "width": 120,
+        },
+        {
+            "fieldname": "supplier_name",
+            "label": _("Supplier Name"),
+            "fieldtype": "Data",
+            "width": 200,
+        },
+        {
+            "fieldname": "customer",
+            "label": _("Customer Code"),
+            "fieldtype": "Link",
+            "options": "Customer",
+            "width": 120,
+        },
+        {
+            "fieldname": "customer_name",
+            "label": _("Customer Name"),
+            "fieldtype": "Data",
+            "width": 200,
         },
         {
             "fieldname": "item_name",
