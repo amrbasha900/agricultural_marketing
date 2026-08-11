@@ -86,7 +86,10 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
         get_query: function () {
             const f = {};
             if (supplierGroupField.get_value()) f['supplier_group'] = supplierGroupField.get_value();
-            return { filters: f };
+            // Custom query so the search matches the supplier CODE only.
+            // Frappe's stock link search always includes the title field, so a
+            // plain `filters` object cannot narrow it down.
+            return { query: METHOD + 'supplier_code_query', filters: f };
         }
     }, 'col-md-3');
 
@@ -214,14 +217,14 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
     // Supplier picker -- type to search instead of scrolling a long <select>
     // ------------------------------------------------------------------
 
-    // Frappe's Autocomplete filters on label+value, so both the supplier name
-    // and its code are searchable.
+    // Frappe's Autocomplete filters on label+value by default; the filter is
+    // replaced below so only the code is matched.
     const partySelect = frappe.ui.form.make_control({
         parent: $layout.find('#ssv2-party-select'),
         df: {
             fieldtype: 'Autocomplete',
             fieldname: 'ssv2_party',
-            placeholder: __('Search supplier by name or code...'),
+            placeholder: __('Search by supplier code...'),
             max_items: 500,
             options: [],
             change: function () {
@@ -238,6 +241,69 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
         only_input: true
     });
     partySelect.$input.addClass('input-sm');
+
+    // ---- relevance ranking -------------------------------------------------
+    //
+    // Matching is against the supplier CODE only -- the Supplier docname. The
+    // name is still shown in the list so the row is readable, but it is never
+    // searched, so a digit cannot pull in unrelated suppliers via their name.
+    //
+    // Awesomplete's stock filter is a plain "contains" with no ordering, so
+    // typing 1 against CN-0001 / CN-1001 / CN-0011 listed them in load order.
+    // A code is a prefix plus a number, and the number is what the user types
+    // -- so a code whose numeric part *equals* the query wins outright
+    // (0001 is supplier number 1), then prefix matches, then contains.
+
+    const digitsOnly = (text) => String(text || '').replace(/\D/g, '');
+
+    function partyRank(item, query) {
+        const q = String(query || '').trim().toLowerCase();
+        if (!q) return 0;
+
+        const code = String(item.value || '').toLowerCase();
+        const codeDigits = digitsOnly(code);
+        const queryDigits = digitsOnly(q);
+        const numericQuery = queryDigits && queryDigits === q.replace(/[^0-9]/g, '') && /^[0-9]+$/.test(q);
+
+        if (code === q) return 1;
+        // 0001 is supplier number 1 -- leading zeros must not hide it.
+        if (numericQuery && codeDigits && parseInt(codeDigits, 10) === parseInt(queryDigits, 10)) return 2;
+        if (code.startsWith(q)) return 3;
+        if (numericQuery && codeDigits.startsWith(queryDigits)) return 4;
+        if (code.includes(q)) return 5;
+        return 0;   // 0 = no match (the name is deliberately not searched)
+    }
+
+    // Awesomplete calls filter() for every item and then sort() on the result,
+    // and sort() is not handed the query -- so remember it here.
+    let partyQuery = '';
+
+    partySelect.awesomplete.filter = function (item, input) {
+        partyQuery = input;
+        return partyRank(item, input) > 0;
+    };
+
+    partySelect.awesomplete.sort = function (a, b) {
+        const ra = partyRank(a, partyQuery);
+        const rb = partyRank(b, partyQuery);
+        if (ra !== rb) return ra - rb;
+
+        // Same tier: the code containing the query more often comes first,
+        // then the smaller number, then alphabetically.
+        const count = (text) => {
+            const q = String(partyQuery || '').trim().toLowerCase();
+            if (!q) return 0;
+            return String(text || '').toLowerCase().split(q).length - 1;
+        };
+        const ca = count(a.value), cb = count(b.value);
+        if (ca !== cb) return cb - ca;
+
+        const na = parseInt(digitsOnly(a.value), 10);
+        const nb = parseInt(digitsOnly(b.value), 10);
+        if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+
+        return String(a.label).localeCompare(String(b.label));
+    };
 
     function setPartyOptions(parties) {
         partySelect.set_data(

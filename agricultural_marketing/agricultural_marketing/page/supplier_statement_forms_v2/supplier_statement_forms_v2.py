@@ -1398,6 +1398,80 @@ def render_statement(filters, party, party_data=None):
 
 
 @frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def supplier_code_query(doctype, txt, searchfield, start, page_len, filters, as_dict=False, **kwargs):
+    """Link-field search that matches the supplier CODE only.
+
+    Frappe's stock link search cannot be narrowed: search_widget() always builds
+    its or-filters from ``["name"] + title_field + meta.search_fields``, so the
+    ``searchfield`` argument it accepts has no effect and typing digits also
+    pulls in suppliers whose *name* happens to contain them.
+
+    Results are ranked the way the preview picker ranks them, so 0001 is the
+    first hit for "1" -- the code is a prefix plus a number, and the number is
+    what the user is typing.
+    """
+    txt = (txt or "").strip()
+
+    conditions = {}
+    if isinstance(filters, dict):
+        conditions.update(filters)
+    elif isinstance(filters, list):
+        for item in filters:
+            if isinstance(item, (list, tuple)) and len(item) >= 3:
+                conditions[item[-3]] = item[-1]
+
+    if txt:
+        conditions["name"] = ["like", "%{0}%".format(txt)]
+
+    # Pull a generous slice, rank it, then hand back one page.
+    rows = frappe.get_all(
+        "Supplier",
+        filters=conditions,
+        fields=["name", "supplier_name"],
+        limit_page_length=500,
+        order_by="name asc",
+    )
+
+    digits = re.compile(r"\D")
+    query_digits = digits.sub("", txt)
+    numeric_query = bool(query_digits) and txt.isdigit()
+
+    def rank(row):
+        code = (row.name or "").lower()
+        code_digits = digits.sub("", code)
+        low = txt.lower()
+
+        if code == low:
+            return 0
+        if numeric_query and code_digits and int(code_digits) == int(query_digits):
+            return 1
+        if code.startswith(low):
+            return 2
+        if numeric_query and code_digits.startswith(query_digits):
+            return 3
+        return 4
+
+    def sort_key(row):
+        code_digits = digits.sub("", row.name or "")
+        occurrences = (row.name or "").lower().count(txt.lower()) if txt else 0
+        return (
+            rank(row),
+            -occurrences,
+            int(code_digits) if code_digits else 0,
+            row.name or "",
+        )
+
+    rows.sort(key=sort_key)
+    page = rows[cint(start) : cint(start) + (cint(page_len) or 10)]
+
+    # The name still shows as the description; it just is not searched.
+    if as_dict:
+        return [{"value": row.name, "description": row.supplier_name or ""} for row in page]
+    return [[row.name, row.supplier_name or ""] for row in page]
+
+
+@frappe.whitelist()
 def get_parties_with_data(filters):
     """Suppliers that actually have movement in the period (for the navigator)."""
     filters = normalize_filters(filters)
