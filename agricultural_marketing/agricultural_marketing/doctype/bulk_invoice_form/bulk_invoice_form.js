@@ -451,6 +451,8 @@ function setup_child_table_filters(frm) {
     if (frm.fields_dict['items'].grid.get_field("supplier")) {
         frm.fields_dict['items'].grid.get_field("supplier").get_query = function() {
             return {
+                // Search by code or by any words of the name, ranked code-first.
+                query: "agricultural_marketing.queries.party_search",
                 filters: {
                     is_farmer: 1
                 }
@@ -781,44 +783,34 @@ function delete_item(frm, row, cdn) {
     }
     
     frappe.confirm(message, function() {
-        // If there's a reference, handle the server-side deletion first
+        // If there's a reference, the server owns the whole deletion
         if (row.reference_invoice_form) {
-            // Get the row index from the items array
-            let row_index = -1;
-            for (let i = 0; i < frm.doc.items.length; i++) {
-                if (frm.doc.items[i].name === row.name) {
-                    row_index = i;
-                    break;
-                }
-            }
-            
-            if (row_index === -1) {
-                frappe.msgprint(__("Could not find item in the list"));
-                return;
-            }
-            
+            // The row is addressed by its docname, never by its position: this
+            // list may hold unsaved edits while the server re-reads the saved
+            // document, and index N would then be a different row there.
+            //
+            // The server removes the row AND the invoice in one transaction and
+            // saves the document itself, so there is nothing left to save here
+            // -- only reload. Freezing blocks the double click that a slow
+            // connection invites.
             frappe.call({
                 method: "agricultural_marketing.agricultural_marketing.doctype.bulk_invoice_form.bulk_invoice_form.handle_item_action",
                 args: {
                     bulk_invoice_name: frm.doc.name,
-                    item_idx: row_index,
+                    item_name: row.name,
                     action_type: "delete"
                 },
+                freeze: true,
+                freeze_message: __("Deleting item..."),
                 callback: function(r) {
                     if (r.message && r.message.success) {
-                        // Remove the row from the grid after successful server operation
-                        frappe.model.clear_doc(row.doctype, row.name);
-                        frm.refresh_field("items");
-                        
-                        // Update reference indicators
-                        add_reference_indicators(frm);
-                        
                         frappe.show_alert({
                             message: r.message.message,
                             indicator: "green"
                         });
-                        frm.dirty();
-                        frm.save();
+                        frm.reload_doc().then(function () {
+                            add_reference_indicators(frm);
+                        });
                     } else {
                         frappe.msgprint(__("Error: ") + (r.message ? r.message.message : "Unknown error"));
                     }

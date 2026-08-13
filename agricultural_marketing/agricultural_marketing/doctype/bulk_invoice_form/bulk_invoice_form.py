@@ -4,6 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import cint
 from collections import defaultdict
 
 # Above this many rows the generation runs in a background job instead of inside
@@ -574,57 +575,158 @@ def handle_item_update(bulk_invoice_name, item_idx, updated_data):
 
 
 @frappe.whitelist()
-def handle_item_action(bulk_invoice_name, item_idx, action_type):
-    """Handle actions on bulk invoice items"""
+def find_dangling_invoice_links(dry_run=1, action="clear_link"):
+    """Report -- and optionally repair -- rows pointing at a deleted Invoice Form.
+
+    These are the leftovers of the old two-step delete: the Invoice Form was
+    removed but the row was not, so the Link is dangling and the whole document
+    fails to save with "Could not find Row #N: Reference Invoice Form: ...".
+
+    Defaults to a dry run because the repair is a data decision:
+
+    * ``clear_link``  keeps the row and only blanks the dead reference, so the
+      document saves again and the row counts as not yet generated -- the next
+      "Create Invoices" will bill it.
+    * ``remove_row``  drops the row entirely, i.e. treats the original deletion
+      as having been intended.
+    """
+    rows = frappe.db.sql(
+        """
+        select b.parent, b.name as row_name, b.idx, b.reference_invoice_form,
+               b.supplier, b.customer, b.item_code, b.qty, b.price
+        from `tabBulk Invoice Form Item` b
+        left join `tabInvoice Form` f on f.name = b.reference_invoice_form
+        where b.reference_invoice_form is not null
+          and b.reference_invoice_form != ''
+          and f.name is null
+        order by b.parent, b.idx
+        """,
+        as_dict=True,
+    )
+
+    if cint(dry_run) or not rows:
+        return {"dry_run": True, "count": len(rows), "rows": rows}
+
+    if action not in ("clear_link", "remove_row"):
+        frappe.throw(_("Unknown action: {0}").format(action))
+
+    repaired = []
+    for parent in sorted({row.parent for row in rows}):
+        doc = frappe.get_doc("Bulk Invoice Form", parent)
+        targets = {row.row_name for row in rows if row.parent == parent}
+
+        for child in list(doc.items):
+            if child.name not in targets:
+                continue
+            if action == "clear_link":
+                child.reference_invoice_form = None
+                child.reference_invoice_form_item = None
+            else:
+                doc.remove(child)
+            repaired.append({"parent": parent, "row": child.name, "action": action})
+
+        doc.save(ignore_permissions=True)
+
+    frappe.db.commit()
+    return {"dry_run": False, "count": len(repaired), "rows": repaired}
+
+
+@frappe.whitelist()
+def handle_item_action(bulk_invoice_name, action_type, item_name=None, item_idx=None):
+    """Handle actions on bulk invoice items.
+
+    `item_name` is the child row's docname and is what callers should send.
+    `item_idx` is only kept so an older cached script keeps working: a position
+    is not a stable address for a row. The browser's list carries unsaved edits
+    while the server re-reads the saved document, so after any local removal the
+    two disagree and index N on one side is a different row on the other --
+    which meant deleting somebody else's Invoice Form.
+    """
     bulk_invoice = frappe.get_doc("Bulk Invoice Form", bulk_invoice_name)
-    item = bulk_invoice.items[int(item_idx)]
-    
+    item = _find_item(bulk_invoice, item_name, item_idx)
+
     if action_type == "delete":
         return delete_item(bulk_invoice, item)
     elif action_type == "edit":
+        if item is None:
+            return {"success": False, "message": _("Row no longer exists")}
         return edit_item(bulk_invoice, item)
-    
+
     return {"success": False, "message": "Invalid action"}
 
 
+def _find_item(bulk_invoice, item_name=None, item_idx=None):
+    """Locate a row by docname, falling back to position for legacy callers."""
+    if item_name:
+        for row in bulk_invoice.items:
+            if row.name == item_name:
+                return row
+        # Already gone -- deletion treats this as success (see delete_item).
+        return None
+
+    if item_idx is not None:
+        index = cint(item_idx)
+        if 0 <= index < len(bulk_invoice.items):
+            return bulk_invoice.items[index]
+
+    return None
+
+
 def delete_item(bulk_invoice, item):
-    """Delete item from bulk invoice and handle references"""
-    try:
-        message = "Item deleted successfully"
-        
-        if item.reference_invoice_form:
-            invoice_form = frappe.get_doc("Invoice Form", item.reference_invoice_form)
-            original_count = len(invoice_form.items)
-            
-            # Find and remove the item using multiple matching criteria
-            items_to_remove = []
-            for inv_item in invoice_form.items:
-                # Try multiple ways to match the item
-                if (inv_item.name == item.reference_invoice_form_item or 
-                    inv_item.bulk_invoice_item_reference == item.name):
-                    items_to_remove.append(inv_item)
-            
-            # Remove found items
-            for inv_item in items_to_remove:
-                invoice_form.items.remove(inv_item)
-            
-            if len(invoice_form.items) == 0:
-                # If no items left, delete the entire invoice form
-                invoice_form.delete(force=1)
-                message = f"Deleted Invoice Form {item.reference_invoice_form} as it had only one item"
-            else:
-                # Recalculate totals and save
-                invoice_form.run_method("calculate_totals")
-                invoice_form.save()
-                message = f"Removed item from Invoice Form {item.reference_invoice_form}"
-                
-            frappe.log_error(message=f"Deleted {len(items_to_remove)} items from invoice form. Original count: {original_count}, New count: {len(invoice_form.items)}", title="Delete Item Debug")
-        
-        return {"success": True, "message": message}
-        
-    except Exception as e:
-        frappe.log_error(message=f"Error deleting item: {str(e)}", title="Delete Item Error")
-        return {"success": False, "message": str(e)}
+    """Remove a row and its Invoice Form counterpart, in one transaction.
+
+    Both halves now happen in this single request. Previously only the Invoice
+    Form was touched here and the row itself was removed by the browser in a
+    second, separate save -- so a lost response, a failed save or a closed tab
+    left the row behind pointing at a document that no longer existed. That
+    dangling Link then made the whole Bulk Invoice Form unsavable
+    ("Could not find Row #N: Reference Invoice Form: ...").
+
+    Exceptions are deliberately not swallowed: letting them out rolls the whole
+    request back, so the row and the invoice can never disagree again.
+    """
+    if item is None:
+        # Nothing to do -- most likely a double click on a slow connection.
+        return {"success": True, "message": _("Row was already removed")}
+
+    reference = item.reference_invoice_form
+    reference_item = item.reference_invoice_form_item
+    row_name = item.name
+    message = _("Item deleted successfully")
+
+    # Drop the row first so the Link stops pointing at the invoice, then handle
+    # the invoice itself. Same transaction, so a failure below undoes this too.
+    bulk_invoice.remove(item)
+    bulk_invoice.save()
+
+    if reference:
+        if not frappe.db.exists("Invoice Form", reference):
+            # Idempotent: the invoice is already gone, the row is what mattered.
+            return {"success": True, "message": _("Removed row; Invoice Form {0} no longer existed").format(reference)}
+
+        invoice_form = frappe.get_doc("Invoice Form", reference)
+
+        remaining = [
+            inv_item
+            for inv_item in invoice_form.items
+            if not (
+                inv_item.name == reference_item
+                or inv_item.bulk_invoice_item_reference == row_name
+            )
+        ]
+
+        if not remaining:
+            invoice_form.delete(force=1)
+            message = _("Deleted Invoice Form {0} as it had only one item").format(reference)
+        else:
+            invoice_form.items = remaining
+            for position, inv_item in enumerate(invoice_form.items, start=1):
+                inv_item.idx = position
+            invoice_form.run_method("calculate_totals")
+            invoice_form.save()
+            message = _("Removed item from Invoice Form {0}").format(reference)
+
+    return {"success": True, "message": message}
 
 
 def edit_item(bulk_invoice, item):
@@ -1071,7 +1173,7 @@ def get_filtered_customers(doctype, txt, searchfield, start, page_len, filters):
         FROM `tabCustomer`
         WHERE is_customer = 1
         AND is_frozen = 0
-        AND (name LIKE %(txt)s OR customer_name LIKE %(txt)s)
+        AND (name LIKE %(token)s OR customer_name LIKE %(token)s)
         AND (
             couple_customer = 0
             OR EXISTS (
@@ -1091,13 +1193,20 @@ def get_filtered_customers(doctype, txt, searchfield, start, page_len, filters):
             )
         )
         ORDER BY name ASC
-        LIMIT %(start)s, %(page_len)s
+        LIMIT %(limit)s
     """
 
-    return frappe.db.sql(query, {
-        "txt": "%%%s%%" % txt,
+    # One token narrows the SQL; the rest of the words are checked in Python,
+    # so "سالم الموسى" finds "سالم صالح محمد الموسى". Ranking is shared with the
+    # other party pickers so every form orders results identically.
+    from agricultural_marketing.queries import CANDIDATE_LIMIT, candidate_filters, rank_rows
+
+    token = candidate_filters(txt)
+    rows = frappe.db.sql(query, {
+        "token": "%%%s%%" % token,
         "exclude": exclude,
-        "start": start,
-        "page_len": page_len
+        "limit": CANDIDATE_LIMIT,
     })
+
+    return rank_rows([(row[0], row[1]) for row in rows], txt, start, page_len)
 

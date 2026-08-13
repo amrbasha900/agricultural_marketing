@@ -1,6 +1,10 @@
 // Copyright (c) 2024, Muhammad Salama and contributors
 // For license information, please see license.txt
 
+// Party link search: matches the code or any words of the name, ranked so a
+// code whose number equals the query comes first. Shared with the other forms.
+const AGM_PARTY_QUERY = "agricultural_marketing.queries.party_search";
+
 // A voucher built from Invoice Form supplier charges is owned by its invoices.
 // Every field is shown read-only and the rows are frozen, so the only way to change
 // it is through the invoices themselves. Submitting and cancelling stay available:
@@ -363,12 +367,13 @@ frappe.ui.form.on("Payments Receipts Reference", {
         };
         let row = frm.selected_doc;
         frappe.model.set_value(row.doctype, row.name, "party_type", frm.doc.party_type);
-        // Both branches keep PARTY_SORTED_BY_CODE_QUERY: without it the party list
-        // falls back to Frappe's relevance ranking (typing "1" puts 1001 before 0001).
+        // Both branches keep AGM_PARTY_QUERY: without it the party list falls back
+        // to Frappe's relevance ranking (typing "1" puts 1001 before 0001) and to
+        // whole-substring name matching, so a multi-word name needs typing in full.
         if (row.party_type == "Customer") {
             frm.fields_dict['references'].grid.get_field("party").get_query = function() {
                 return {
-                    query: PARTY_SORTED_BY_CODE_QUERY,
+                    query: AGM_PARTY_QUERY,
                     filters: {
                         is_customer: 1,
                         couple_customer: 0
@@ -378,7 +383,7 @@ frappe.ui.form.on("Payments Receipts Reference", {
         } else {
             frm.fields_dict['references'].grid.get_field("party").get_query = function() {
                 return {
-                    query: PARTY_SORTED_BY_CODE_QUERY
+                    query: AGM_PARTY_QUERY
                 }
             };
         }

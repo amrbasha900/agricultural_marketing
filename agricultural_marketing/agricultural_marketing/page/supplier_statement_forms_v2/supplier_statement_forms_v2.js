@@ -5,6 +5,7 @@
 frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
     const METHOD = 'agricultural_marketing.agricultural_marketing.page.supplier_statement_forms_v2.supplier_statement_forms_v2.';
     const SF = 'agricultural_marketing.agricultural_marketing.page.statement_forms.statement_forms.';
+    const PARTY_QUERY = 'agricultural_marketing.queries.party_search';
 
     const page = frappe.ui.make_app_page({
         parent: wrapper,
@@ -86,10 +87,9 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
         get_query: function () {
             const f = {};
             if (supplierGroupField.get_value()) f['supplier_group'] = supplierGroupField.get_value();
-            // Custom query so the search matches the supplier CODE only.
-            // Frappe's stock link search always includes the title field, so a
-            // plain `filters` object cannot narrow it down.
-            return { query: METHOD + 'supplier_code_query', filters: f };
+            // Shared query: matches the code or any words of the name, and
+            // ranks code hits first so 0001 wins when you type 1.
+            return { query: PARTY_QUERY, filters: f };
         }
     }, 'col-md-3');
 
@@ -217,14 +217,14 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
     // Supplier picker -- type to search instead of scrolling a long <select>
     // ------------------------------------------------------------------
 
-    // Frappe's Autocomplete filters on label+value by default; the filter is
-    // replaced below so only the code is matched.
+    // Frappe's Autocomplete filters on label+value with no ranking; the filter
+    // and sort are replaced below.
     const partySelect = frappe.ui.form.make_control({
         parent: $layout.find('#ssv2-party-select'),
         df: {
             fieldtype: 'Autocomplete',
             fieldname: 'ssv2_party',
-            placeholder: __('Search by supplier code...'),
+            placeholder: __('Search by supplier code or name...'),
             max_items: 500,
             options: [],
             change: function () {
@@ -244,15 +244,13 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
 
     // ---- relevance ranking -------------------------------------------------
     //
-    // Matching is against the supplier CODE only -- the Supplier docname. The
-    // name is still shown in the list so the row is readable, but it is never
-    // searched, so a digit cannot pull in unrelated suppliers via their name.
+    // Mirrors agricultural_marketing/queries.py so the picker and the Link
+    // fields behave identically.
     //
-    // Awesomplete's stock filter is a plain "contains" with no ordering, so
-    // typing 1 against CN-0001 / CN-1001 / CN-0011 listed them in load order.
-    // A code is a prefix plus a number, and the number is what the user types
-    // -- so a code whose numeric part *equals* the query wins outright
-    // (0001 is supplier number 1), then prefix matches, then contains.
+    // Code hits outrank name hits, and a code whose number *equals* the query
+    // wins outright -- 0001 is supplier number 1, so typing 1 must surface it
+    // rather than 1001. Names are matched token by token, in any order, so
+    // "سالم الموسى" finds "سالم صالح محمد الموسى".
 
     const digitsOnly = (text) => String(text || '').replace(/\D/g, '');
 
@@ -261,9 +259,12 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
         if (!q) return 0;
 
         const code = String(item.value || '').toLowerCase();
+        // The label is "name (code)"; strip the trailing code so a digit cannot
+        // match the same code twice.
+        const name = String(item.label || '').toLowerCase().replace(/\s*\([^)]*\)\s*$/, '');
         const codeDigits = digitsOnly(code);
         const queryDigits = digitsOnly(q);
-        const numericQuery = queryDigits && queryDigits === q.replace(/[^0-9]/g, '') && /^[0-9]+$/.test(q);
+        const numericQuery = /^[0-9]+$/.test(q);
 
         if (code === q) return 1;
         // 0001 is supplier number 1 -- leading zeros must not hide it.
@@ -271,7 +272,16 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
         if (code.startsWith(q)) return 3;
         if (numericQuery && codeDigits.startsWith(queryDigits)) return 4;
         if (code.includes(q)) return 5;
-        return 0;   // 0 = no match (the name is deliberately not searched)
+        if (name.startsWith(q)) return 6;
+        if (name.includes(q)) return 7;
+
+        // Every word present somewhere, in any order.
+        const tokens = q.split(/\s+/).filter(Boolean);
+        if (tokens.length > 1) {
+            const hay = code + ' ' + name;
+            if (tokens.every((t) => hay.includes(t))) return 8;
+        }
+        return 0;   // 0 = no match
     }
 
     // Awesomplete calls filter() for every item and then sort() on the result,
