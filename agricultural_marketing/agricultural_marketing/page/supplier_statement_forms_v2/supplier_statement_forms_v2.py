@@ -262,21 +262,47 @@ def _run_renderer(command, timeout=600):
         shell=False,
         start_new_session=True,
     )
+    group = None
+    try:
+        group = os.getpgid(process.pid)
+    except OSError:
+        pass
 
     try:
         process.communicate(timeout=timeout)
-        return True
+        timed_out = False
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            process.kill()
-        process.communicate()      # reap, so nothing lingers in the table
+        timed_out = True
+        _kill_group(process, group)
+        process.communicate()      # reap our own child
         frappe.log_error(
             message="Renderer timed out after {0}s and was killed: {1}".format(timeout, command[0]),
             title="Supplier Statement V2 - PDF",
         )
-        return False
+
+    # One headless render spawns about a dozen helper processes (zygote, gpu,
+    # renderers). Chrome normally takes them down with it, but any straggler
+    # outlives us and is re-parented to PID 1 -- and in a container PID 1 is the
+    # entrypoint, which does not reap. Those stragglers then sit as zombies for
+    # the life of the container. Sweeping the group closes that door.
+    if not timed_out:
+        _kill_group(process, group)
+
+    return not timed_out
+
+
+def _kill_group(process, group):
+    """Kill everything the renderer started, ignoring what is already gone."""
+    if group:
+        try:
+            os.killpg(group, signal.SIGKILL)
+            return
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    try:
+        process.kill()
+    except (ProcessLookupError, OSError):
+        pass
 
 
 def _print_with_wkhtmltopdf(html):
