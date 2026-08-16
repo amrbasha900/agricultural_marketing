@@ -23,6 +23,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import unicodedata
@@ -245,6 +246,39 @@ CHROME_BINARIES = (
 )
 
 
+def _run_renderer(command, timeout=600):
+    """Run a PDF renderer, making sure nothing survives it.
+
+    subprocess.run() reaps the process it starts, so a zombie is never left
+    behind -- but on a timeout it kills only that one process. Chrome spawns a
+    zygote and renderer children, which would then be re-parented to init and
+    keep holding memory. Starting a new session puts the whole tree in its own
+    process group so the timeout takes all of it down together.
+    """
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+        start_new_session=True,
+    )
+
+    try:
+        process.communicate(timeout=timeout)
+        return True
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            process.kill()
+        process.communicate()      # reap, so nothing lingers in the table
+        frappe.log_error(
+            message="Renderer timed out after {0}s and was killed: {1}".format(timeout, command[0]),
+            title="Supplier Statement V2 - PDF",
+        )
+        return False
+
+
 def _print_with_wkhtmltopdf(html):
     """Fallback renderer, invoked directly rather than via frappe.utils.pdf.
 
@@ -272,7 +306,7 @@ def _print_with_wkhtmltopdf(html):
             html_file.write(html)
             html_file.flush()
 
-            subprocess.run(
+            _run_renderer(
                 [
                     binary,
                     "--quiet",
@@ -286,11 +320,7 @@ def _print_with_wkhtmltopdf(html):
                     "--margin-right", "0",
                     html_file.name,
                     pdf_path,
-                ],
-                shell=False,
-                check=False,
-                capture_output=True,
-                timeout=600,
+                ]
             )
 
         if not os.path.exists(pdf_path):
@@ -376,7 +406,7 @@ def _print_with_chrome(html):
             html_file.write(html)
             html_file.flush()
 
-            subprocess.run(
+            _run_renderer(
                 [
                     chrome,
                     "--headless",
@@ -387,9 +417,6 @@ def _print_with_chrome(html):
                     "--print-to-pdf={0}".format(pdf_path),
                     html_file.name,
                 ],
-                shell=False,
-                check=False,
-                capture_output=True,
                 timeout=300,
             )
 
