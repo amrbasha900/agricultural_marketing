@@ -187,9 +187,18 @@
         padding: 0 3mm;
     }
 
-    .band .qr img {
+    /* Painted as a background rather than an <img>: the PDF pipeline's URL
+       scrubber appends a session id to every src attribute it finds -- data
+       URIs included -- which corrupts the QR. Its CSS pattern allows only one
+       optional space between the colon and url(, so the two spaces below keep
+       this background out of its reach. */
+    .band .qr .qr-img {
+        display: block;
         width: 22mm;
         height: 22mm;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
     }
 
     /* Equal flexible halves either side of the QR, which is the only fixed
@@ -366,7 +375,7 @@
                 </div>
 
                 {% if qr %}
-                <div class="qr"><img src="{{ qr }}" alt="QR"></div>
+                <div class="qr"><span class="qr-img" style="background-image:  url({{ qr }})"></span></div>
                 {% endif %}
 
                 <div class="balances">
@@ -402,7 +411,7 @@
                     <tr>
                         <th style="width: 5%">مسلسل</th>
                         <th style="width: 28%">البيان</th>
-                        <th style="width: 8%">السعر</th>
+                        <th style="width: 8%">السعي</th>
                         <th style="width: 11%">التاريخ</th>
                         <th style="width: 11%">مبلغ مدين/عليه</th>
                         <th style="width: 11%">مبلغ دائن / له</th>
@@ -416,7 +425,7 @@
                     <tr>
                         <td class="num">{{ row.idx }}</td>
                         <td class="desc">{{ row.description }}</td>
-                        <td class="num">{{ row.price }}</td>
+                        <td class="num">{{ row.commission }}</td>
                         <td class="num">{{ row.date }}</td>
                         <td class="num">{{ row.debit }}</td>
                         <td class="num">{{ row.credit }}</td>

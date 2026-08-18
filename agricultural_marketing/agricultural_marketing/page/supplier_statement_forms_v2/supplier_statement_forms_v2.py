@@ -17,15 +17,12 @@ from V1 so both pages can never drift apart.
 """
 
 import base64
+import hashlib
 import io
 import json
 import os
 import random
 import re
-import shutil
-import signal
-import subprocess
-import tempfile
 import unicodedata
 
 import frappe
@@ -207,12 +204,20 @@ def _total_row(rows, id_field):
 
 
 def get_pdf_bytes(html, options=None):
-    """Render with headless Chrome so the Arabic text stays selectable/searchable.
+    """Render through whichever PDF engine the site is configured to use.
 
-    V1 goes through ``frappe.utils.pdf.get_pdf``, which frappe_pdf only
-    redirects to Chrome when ``Print Settings.pdf_using_google_chrome`` is
-    ticked.  V2 asks for Chrome directly and only falls back to wkhtmltopdf when
-    the frappe_pdf app is not installed at all.
+    No engine of our own: ``frappe.utils.pdf.get_pdf`` is the standard entry
+    point, and a print app installed on the site (frappe_pdf and its forks, which
+    hand the job to a dedicated Chrome container) has already redirected it
+    there.  Resolving a Chrome binary ourselves would step around that container
+    and break on any host that keeps it somewhere else.
+
+    What does *not* survive that pipeline is a ``data:`` URI -- the URL scrubbers
+    on both routes append to it (" !important" on frappe's, "?sid=..." on
+    frappe_pdf's), which silently destroyed the QR and the embedded font when
+    this page last went through them.  The statement therefore writes its two
+    data URIs in shapes those regexes cannot match; see the notes on the QR in
+    the template and on ``src:`` spacing in ``public/fonts/cairo.css``.
     """
     options = dict(options or {})
     options.setdefault("orientation", "Portrait")
@@ -223,241 +228,15 @@ def get_pdf_bytes(html, options=None):
     options.setdefault("margin-left", "0mm")
     options.setdefault("margin-right", "0mm")
 
-    content = _print_with_chrome(html)
+    # Attribute access, not "from ... import": the print app patches the module
+    # attribute at boot, so a name bound at import time would miss it.
+    import frappe.utils.pdf
 
-    if content is None:
-        return _print_with_wkhtmltopdf(html) or b""
+    content = frappe.utils.pdf.get_pdf(html, options)
 
-    # Chrome's own /ToUnicode maps land on presentation forms, so the PDF is not
-    # searchable in Arabic until we rewrite them.
+    # Chrome builds its /ToUnicode maps from shaped glyphs, so the PDF is not
+    # searchable in Arabic until we rewrite them. A no-op on other engines.
     return make_arabic_searchable(content)
-
-
-#: Binary names to look for, in order of preference. The headless shell is what
-#: Chrome-for-Testing ships and is enough for --print-to-pdf.
-CHROME_BINARIES = (
-    "google-chrome",
-    "google-chrome-stable",
-    "chromium",
-    "chromium-browser",
-    "chrome",
-    "chrome-headless-shell",
-    "headless_shell",
-)
-
-
-def _run_renderer(command, timeout=600):
-    """Run a PDF renderer, making sure nothing survives it.
-
-    subprocess.run() reaps the process it starts, so a zombie is never left
-    behind -- but on a timeout it kills only that one process. Chrome spawns a
-    zygote and renderer children, which would then be re-parented to init and
-    keep holding memory. Starting a new session puts the whole tree in its own
-    process group so the timeout takes all of it down together.
-    """
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        shell=False,
-        start_new_session=True,
-    )
-    group = None
-    try:
-        group = os.getpgid(process.pid)
-    except OSError:
-        pass
-
-    try:
-        process.communicate(timeout=timeout)
-        timed_out = False
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        _kill_group(process, group)
-        process.communicate()      # reap our own child
-        frappe.log_error(
-            message="Renderer timed out after {0}s and was killed: {1}".format(timeout, command[0]),
-            title="Supplier Statement V2 - PDF",
-        )
-
-    # One headless render spawns about a dozen helper processes (zygote, gpu,
-    # renderers). Chrome normally takes them down with it, but any straggler
-    # outlives us and is re-parented to PID 1 -- and in a container PID 1 is the
-    # entrypoint, which does not reap. Those stragglers then sit as zombies for
-    # the life of the container. Sweeping the group closes that door.
-    if not timed_out:
-        _kill_group(process, group)
-
-    return not timed_out
-
-
-def _kill_group(process, group):
-    """Kill everything the renderer started, ignoring what is already gone."""
-    if group:
-        try:
-            os.killpg(group, signal.SIGKILL)
-            return
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
-    try:
-        process.kill()
-    except (ProcessLookupError, OSError):
-        pass
-
-
-def _print_with_wkhtmltopdf(html):
-    """Fallback renderer, invoked directly rather than via frappe.utils.pdf.
-
-    ``frappe.utils.pdf.get_pdf`` runs the markup through ``expand_relative_urls``
-    (frappe/utils/data.py), which appends " !important" after *every* CSS
-    ``url(...)`` as a background-image workaround::
-
-        src: url(data:font/woff2;base64,...) format('woff2')
-        ->  src: url(data:font/woff2;base64,...) !important format('woff2')
-
-    That is invalid inside a src list, so the whole @font-face is discarded and
-    the statement silently reverts to DejaVu. Nothing in this document uses a
-    relative URL, so the rewrite has nothing to gain here anyway.
-    """
-    binary = shutil.which("wkhtmltopdf")
-    if not binary:
-        return None
-
-    pdf_path = os.path.join(tempfile.gettempdir(), "{0}.pdf".format(frappe.generate_hash()))
-
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".html", delete=True, encoding="utf-8"
-        ) as html_file:
-            html_file.write(html)
-            html_file.flush()
-
-            _run_renderer(
-                [
-                    binary,
-                    "--quiet",
-                    "--encoding", "UTF-8",
-                    "--print-media-type",
-                    "--page-size", "A4",
-                    # The sheet draws its own frame; margins live in the CSS.
-                    "--margin-top", "0",
-                    "--margin-bottom", "0",
-                    "--margin-left", "0",
-                    "--margin-right", "0",
-                    html_file.name,
-                    pdf_path,
-                ]
-            )
-
-        if not os.path.exists(pdf_path):
-            frappe.log_error(
-                message="wkhtmltopdf produced no PDF at {0}".format(pdf_path),
-                title="Supplier Statement V2 - PDF",
-            )
-            return None
-
-        with open(pdf_path, "rb") as f:
-            return f.read()
-    finally:
-        if os.path.exists(pdf_path):
-            os.remove(pdf_path)
-
-
-def chrome_path():
-    """Locate the Chrome binary used for PDF rendering.
-
-    Looked up in this order:
-
-    1. ``chrome_path`` in site_config.json / common_site_config.json
-    2. ``$CHROME_PATH`` or ``$CHROME_BIN``
-    3. ``<bench>/chrome/chrome-headless-shell`` (see install_chrome())
-    4. anything on PATH
-
-    The first two exist because the official frappe/erpnext Docker images ship
-    wkhtmltopdf and no Chrome at all: a compose file can point at a browser from
-    another layer or a mounted volume without touching this code.
-    """
-    configured = (
-        frappe.conf.get("chrome_path")
-        or os.environ.get("CHROME_PATH")
-        or os.environ.get("CHROME_BIN")
-    )
-    if configured and os.path.exists(configured):
-        return configured
-
-    try:
-        bundled = os.path.join(
-            frappe.utils.get_bench_path(), "chrome", "chrome-headless-shell"
-        )
-        if os.path.exists(bundled):
-            return bundled
-    except Exception:
-        pass
-
-    for name in CHROME_BINARIES:
-        found = shutil.which(name)
-        if found:
-            return found
-
-    return None
-
-
-def _print_with_chrome(html):
-    """Print self-contained HTML with headless Chrome. Returns None if absent.
-
-    Deliberately does NOT go through ``frappe_pdf.utils.pdf.get_pdf``. That
-    helper runs the markup through ``scrub_urls()``, whose sid-appending branch
-    sits *outside* its own ``data:`` guard::
-
-        src="data:image/png;base64,iVBORw0..."
-        -> src="data:image/png;base64,iVBORw0...?sid=64c61a7692..."
-
-    which silently destroys both the QR image and the embedded Cairo font. It
-    only bites inside a web request (``frappe.local.request`` must exist), which
-    is why the queued PDFs looked fine and the Download button did not.
-
-    This statement is fully self-contained -- every asset is already a data URI,
-    with no relative links to rewrite -- so URL scrubbing buys nothing here.
-    """
-    chrome = chrome_path()
-    if not chrome:
-        return None
-
-    pdf_path = os.path.join(tempfile.gettempdir(), "{0}.pdf".format(frappe.generate_hash()))
-
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".html", delete=True, encoding="utf-8"
-        ) as html_file:
-            html_file.write(html)
-            html_file.flush()
-
-            _run_renderer(
-                [
-                    chrome,
-                    "--headless",
-                    "--disable-gpu",
-                    "--no-sandbox",
-                    "--no-pdf-header-footer",
-                    "--run-all-compositor-stages-before-draw",
-                    "--print-to-pdf={0}".format(pdf_path),
-                    html_file.name,
-                ],
-                timeout=300,
-            )
-
-        if not os.path.exists(pdf_path):
-            frappe.log_error(
-                message="Chrome produced no PDF at {0}".format(pdf_path),
-                title="Supplier Statement V2 - PDF",
-            )
-            return None
-
-        with open(pdf_path, "rb") as f:
-            return f.read()
-    finally:
-        if os.path.exists(pdf_path):
-            os.remove(pdf_path)
 
 
 # --- Arabic searchability -------------------------------------------------
@@ -658,131 +437,62 @@ def make_arabic_searchable(pdf_bytes):
         return pdf_bytes
 
 
-def install_chrome(version=None):
-    """Download chrome-headless-shell into ``<bench>/chrome`` and use it.
-
-    For container images where ``apt install`` is not an option. Run once from
-    the bench:
-
-        bench --site <site> execute \
-          agricultural_marketing.agricultural_marketing.page.supplier_statement_forms_v2.supplier_statement_forms_v2.install_chrome
-
-    It survives restarts but not image rebuilds -- put ``<bench>/chrome`` on a
-    volume, or bake the browser into the image, if the container is disposable.
-    """
-    import io as _io
-    import json as _json
-    import stat
-    import urllib.request
-    import zipfile
-
-    bench_path = frappe.utils.get_bench_path()
-    target_dir = os.path.join(bench_path, "chrome")
-
-    feed = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
-    with urllib.request.urlopen(feed, timeout=60) as response:
-        channels = _json.loads(response.read())
-
-    channel = channels["channels"]["Stable"]
-    if version:
-        channel = dict(channel, version=version)
-
-    url = next(
-        entry["url"]
-        for entry in channel["downloads"]["chrome-headless-shell"]
-        if entry["platform"] == "linux64"
-    )
-
-    with urllib.request.urlopen(url, timeout=600) as response:
-        archive = zipfile.ZipFile(_io.BytesIO(response.read()))
-        archive.extractall(target_dir)
-
-    # The zip nests everything under chrome-headless-shell-linux64/.
-    binary = None
-    for root, _dirs, files in os.walk(target_dir):
-        if "chrome-headless-shell" in files:
-            binary = os.path.join(root, "chrome-headless-shell")
-            break
-
-    if not binary:
-        frappe.throw(_("chrome-headless-shell not found in the downloaded archive"))
-
-    final = os.path.join(target_dir, "chrome-headless-shell")
-    if binary != final:
-        os.replace(binary, final)
-
-    os.chmod(final, os.stat(final).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-
-    return {"version": channel["version"], "path": final, "engine": pdf_engine_info()}
-
-
-def chrome_is_usable(path=None):
-    """Whether the resolved browser can actually start.
-
-    Slim container images frequently carry the binary but not its shared
-    libraries (libnss3, libgbm, libasound2, ...). Existence alone therefore
-    proves nothing, and a browser that cannot start makes get_pdf_bytes() fall
-    back to wkhtmltopdf *silently* -- the PDF still arrives, just without
-    searchable Arabic. Probing keeps the reported engine honest.
-
-    Cached for an hour: spawning Chrome costs ~100 ms.
-    """
-    path = path or chrome_path()
-    if not path:
-        return False
-
-    cache_key = "agm_chrome_usable::" + path
-    cached = frappe.cache().get_value(cache_key)
-    if cached is not None:
-        return bool(cint(cached))
-
-    try:
-        result = subprocess.run(
-            [path, "--version"], capture_output=True, timeout=30, check=False
-        )
-        usable = result.returncode == 0
-    except Exception:
-        usable = False
-
-    # get_value() takes no TTL, so the expiry has to be set on the write.
-    frappe.cache().set_value(cache_key, 1 if usable else 0, expires_in_sec=3600)
-    return usable
+#: Ways a site can say "print with Chrome", in the order they take effect.
+#: Each entry is a Print Settings fieldname and a test for its value; the first
+#: field this Frappe version actually has decides the answer.
+CHROME_SETTINGS = (
+    # frappe_pdf and its forks add this checkbox and, when it is on, replace
+    # frappe.utils.pdf.get_pdf outright -- so it beats anything below.
+    ("pdf_using_google_chrome", lambda value: bool(cint(value))),
+    # Frappe v16 ships its own selector, where "chrome" is one of the choices.
+    ("pdf_generator", lambda value: str(value or "").lower().startswith("chrome")),
+)
 
 
 def pdf_engine_info():
-    """Reported in the UI so the user always knows which engine will be used."""
-    resolved = chrome_path()
+    """Report which engine the site will use, for the banner in the UI.
 
-    if resolved and chrome_is_usable(resolved):
+    Purely read-only. This page used to pick an engine itself; it no longer
+    does, so all this can do is describe the site's own configuration.
+    """
+    if _site_prints_with_chrome():
         return {
             "engine": "google-chrome",
-            "path": resolved,
             "searchable_arabic": True,
-            "message": _("PDFs are rendered with headless Google Chrome (searchable Arabic text)."),
-        }
-
-    if resolved:
-        # Found but not runnable -- almost always missing shared libraries in a
-        # slim container image. Say so, rather than claiming Chrome is in use.
-        return {
-            "engine": "wkhtmltopdf",
-            "path": resolved,
-            "searchable_arabic": False,
             "message": _(
-                "Chrome was found at {0} but will not start (usually missing system "
-                "libraries), so PDFs fall back to wkhtmltopdf and Arabic text will "
-                "not be searchable."
-            ).format(resolved),
+                "PDFs are rendered by the site's Chrome print service "
+                "(Arabic text stays searchable)."
+            ),
         }
 
     return {
         "engine": "wkhtmltopdf",
         "searchable_arabic": False,
         "message": _(
-            "Google Chrome is not installed on this server, so PDFs fall back to "
-            "wkhtmltopdf and Arabic text will not be searchable."
+            "This site is set to print with wkhtmltopdf, so Arabic text in the "
+            "PDF will not be searchable. Switch printing to Google Chrome in "
+            "Print Settings to fix that."
         ),
     }
+
+
+def _site_prints_with_chrome():
+    try:
+        meta = frappe.get_meta("Print Settings")
+    except Exception:
+        meta = None
+
+    for fieldname, is_chrome in CHROME_SETTINGS:
+        # has_field first: get_single_value() on a field this version does not
+        # have raises *and* leaves an error in the message log, which the desk
+        # would then pop up at the user.
+        if not meta or not meta.has_field(fieldname):
+            continue
+        if is_chrome(frappe.db.get_single_value("Print Settings", fieldname)):
+            return True
+
+    # v16 also takes a site-wide default straight from the config file.
+    return str(frappe.conf.get("pdf_generator") or "").lower().startswith("chrome")
 
 
 # ---------------------------------------------------------------------------
@@ -858,13 +568,31 @@ def _embedded_font_css():
                 "  font-family: 'AGM Arabic';\n"
                 "  font-style: normal;\n"
                 "  font-weight: 400 700;\n"
-                "  src: url(data:%s;base64,%s) format('%s');\n"
+                # Two spaces before url() on purpose -- see cairo.css.
+                "  src:  url(data:%s;base64,%s) format('%s');\n"
                 "}\n" % (mime, encoded, mime.split("/")[1])
             )
 
         return ""
 
-    return frappe.cache().get_value("agm_statement_v2_font_css", _load)
+    # Keyed on what is actually in the fonts folder, so replacing or re-spacing
+    # a font file takes effect on the next render instead of waiting for someone
+    # to remember to clear the cache.
+    return frappe.cache().get_value("agm_statement_v2_font_css:%s" % _fonts_fingerprint(), _load)
+
+
+def _fonts_fingerprint():
+    """Cheap signature of the fonts folder: name, size and mtime of each file."""
+    try:
+        fonts_dir = os.path.join(frappe.get_app_path("agricultural_marketing"), "public", "fonts")
+        stamp = sorted(
+            (name, os.path.getsize(os.path.join(fonts_dir, name)), int(os.path.getmtime(os.path.join(fonts_dir, name))))
+            for name in os.listdir(fonts_dir)
+        )
+    except OSError:
+        return "none"
+
+    return hashlib.md5(repr(stamp).encode()).hexdigest()[:12]
 
 
 # ---------------------------------------------------------------------------
@@ -1035,9 +763,19 @@ def build_ledger_rows(value, filters, party=None):
                 "sort_key": (item.get("date"), 0),
                 "date": item.get("date"),
                 "description": _describe_item(item, neglect_items),
-                "price": item.get("price"),
+                # سعي, VAT included -- the same figure that is deducted from
+                # the amount on this row, so الإجمالي - السعي reconciles on
+                # paper, and the column adds up to "سعي الاصناف" in the totals
+                # block (V1 reports that one with tax too).
+                # NULL prints as 0.00 rather than an empty cell: a selling row
+                # always has a سعي figure, even when it is zero.
+                "commission": _commission_with_vat(item.get("commission")),
                 "debit": 0,
-                "credit": flt(item.get("total")),
+                # Net of the سعي: what the supplier is actually owed for this
+                # item. The deduction includes the VAT charged on the
+                # commission, because that is what the balance deducts -- see
+                # _commission_with_vat().
+                "credit": flt(item.get("total")) - _commission_with_vat(item.get("commission")),
                 "supplier_code": party or "",
                 "customer_code": customer,
                 "book_no": books.get(item.get("invoice_id"), ""),
@@ -1051,7 +789,8 @@ def build_ledger_rows(value, filters, party=None):
                 "sort_key": (item.get("date"), 1),
                 "date": item.get("date"),
                 "description": "{} - {}".format(_("شراء"), _describe_item(item, neglect_items)),
-                "price": item.get("price"),
+                # No سعي on a purchase, and V1's buying query does not select it.
+                "commission": None,
                 "debit": flt(item.get("total")),
                 "credit": 0,
                 "supplier_code": buying_suppliers.get(item.get("invoice_id"), ""),
@@ -1067,7 +806,7 @@ def build_ledger_rows(value, filters, party=None):
                 "sort_key": (payment.get("date"), 2),
                 "date": payment.get("date"),
                 "description": _describe_payment(payment),
-                "price": None,
+                "commission": None,
                 "debit": amount if amount > 0 else 0,
                 "credit": abs(amount) if amount < 0 else 0,
                 "supplier_code": party or "",
@@ -1077,21 +816,10 @@ def build_ledger_rows(value, filters, party=None):
 
     entries.sort(key=lambda e: (e["sort_key"][0] or frappe.utils.getdate("1900-01-01"), e["sort_key"][1]))
 
-    # Commission is a period aggregate, so it closes the ledger.
+    # No closing "سعي الأصناف + الضريبة" line any more: every selling row is
+    # already net of its own commission, so charging it again here would deduct
+    # it twice. The figure is still reported in the totals block.
     commission = flt(selling_total.get("commission"))
-    if commission:
-        entries.append(
-            {
-                "sort_key": None,
-                "date": filters.get("to_date"),
-                "description": _("سعي الأصناف + الضريبة"),
-                "price": None,
-                "debit": commission,
-                "credit": 0,
-                "supplier_code": party or "",
-                "customer_code": "",
-            }
-        )
 
     rows = []
     for index, entry in enumerate(entries, start=1):
@@ -1101,7 +829,11 @@ def build_ledger_rows(value, filters, party=None):
                 "idx": index,
                 "date": date_str(entry["date"]),
                 "description": entry["description"],
-                "price": money(entry["price"], hide_decimal) if entry["price"] else "",
+                "commission": (
+                    money(entry["commission"], hide_decimal)
+                    if entry["commission"] is not None
+                    else ""
+                ),
                 "debit": money(debit, hide_decimal),
                 "credit": money(credit, hide_decimal),
                 "debit_raw": debit,
@@ -1211,6 +943,20 @@ def _counterparty_maps(filters, party):
         buying[row.invoice_id] = row.supplier or ""
 
     return selling, buying
+
+
+def _commission_with_vat(commission):
+    """A commission plus the VAT charged on it.
+
+    The balance deducts commission *including* tax (V1 builds its
+    "Commission + VAT" summary line that way), so a row that shows a net amount
+    has to deduct the same thing -- otherwise the rows would no longer add up
+    to the closing balance, short by exactly the VAT.
+    """
+    commission = flt(commission)
+    if not commission:
+        return 0.0
+    return commission * (1 + flt(v1.get_tax_rate()) / 100.0)
 
 
 def _flip_negatives(debit, credit):
@@ -1327,6 +1073,13 @@ def build_context(filters, party, party_data):
 
     rows, aggregates = build_ledger_rows(party_data, filters, party)
 
+    # "خلال الفترة" reports the two column totals of the ledger, not the net
+    # balance -- the reader wants to see how much was charged and how much was
+    # credited, which a single net figure hides. Their difference is still the
+    # period movement, so رصيد سابق + (دائن - مدين) = الصافي as before.
+    period_debit_total = sum(flt(row["debit_raw"]) for row in rows)
+    period_credit_total = sum(flt(row["credit_raw"]) for row in rows)
+
     company_profile = get_company_profile(filters.get("company"))
     supplier = get_supplier_profile(party)
     base_font_size = cint(frappe.db.get_single_value("Agriculture Settings", "font_size")) or 12
@@ -1374,8 +1127,8 @@ def build_context(filters, party, party_data):
         "balances": {
             "opening_debit": money(opening_balance if opening_balance > 0 else 0, hide_decimal),
             "opening_credit": money(abs(opening_balance) if opening_balance < 0 else 0, hide_decimal),
-            "period_debit": money(period_balance if period_balance > 0 else 0, hide_decimal),
-            "period_credit": money(abs(period_balance) if period_balance < 0 else 0, hide_decimal),
+            "period_debit": money(period_debit_total, hide_decimal),
+            "period_credit": money(period_credit_total, hide_decimal),
             "closing_debit": money(closing_balance if closing_balance > 0 else 0, hide_decimal),
             "closing_credit": money(abs(closing_balance) if closing_balance < 0 else 0, hide_decimal),
         },
