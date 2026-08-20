@@ -1122,6 +1122,8 @@ def get_pdf_generation_status(filters=None, history_id=None):
                     "whatsapp_sent": 1 if whatsapp_status in ("Sent", "Delivered", "Read") else 0,
                     "whatsapp_message_id": item.whatsapp_message_id,
                     "whatsapp_status": whatsapp_status,
+                    "telegram_status": item.get("telegram_status") or "Not Created",
+                    "telegram_error": item.get("telegram_error"),
                 }
                 
                 # Get additional data from PDF Generator Log if needed
@@ -1162,7 +1164,7 @@ def get_pdf_generation_status(filters=None, history_id=None):
         fields=[
             "name", "party_name", "party_type", "status", "pdf_file", 
             "error_message", "creation_time", "completion_time", "whatsapp_sent",
-            "whatsapp_message_id"
+            "whatsapp_message_id", "telegram_status", "telegram_error"
         ],
         order_by="creation desc",
         limit=200

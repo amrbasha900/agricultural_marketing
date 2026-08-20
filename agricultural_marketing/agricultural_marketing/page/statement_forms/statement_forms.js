@@ -507,6 +507,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
                         <button class="btn btn-sm sf-action-btn btn-warning" id="send-all-whatsapp" style="margin: 5px;">${__('Send All WhatsApp')}</button>
                         <button class="btn btn-sm sf-action-btn btn-outline-warning" id="retry-all-whatsapp" style="margin: 5px;">${__('Retry All WhatsApp')}</button>
                         <button class="btn btn-sm sf-action-btn btn-outline-danger" id="cancel-whatsapp-queue" style="margin: 5px;">${__('Cancel WhatsApp Queue')}</button>
+                        ${AgriTelegram.actionsHtml()}
                         ${(failedJobs > 0 && historyId) ? `<button class=\"btn btn-sm sf-action-btn btn-outline-danger\" id=\"retry-all-failed\" style=\"margin: 5px;\">${__('Retry All Failed')}</button>` : ''}
                         ${(showRetryQueuedFailedBtn && historyId) ? `<button class=\"btn btn-sm sf-action-btn btn-outline-danger\" id=\"retry-all-queued-failed\" style=\"margin: 5px;\">${__('Retry All Queued/Failed')}</button>` : ''}
                         ${historyId ? `<button class="btn btn-sm sf-action-btn btn-outline-info" id="view-history-details" style="margin: 5px;">${__('View History')}</button>` : ''}
@@ -561,6 +562,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
         logs.forEach(log => {
             let statusBadge = getStatusBadge(log.status);
             let whatsappIcon = getWhatsAppIcon(log.whatsapp_sent, log.whatsapp_status);
+            let telegramBadge = AgriTelegram.badge(log);
             let actions = getActionButtons(log);
             let creationTime = log.creation_time ? frappe.datetime.str_to_user(log.creation_time) : '';
 
@@ -577,7 +579,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
                     </td>
                     <td><small>${log.party_name || ''}</small></td>
                     <td>${statusBadge}</td>
-                    <td>${whatsappIcon}</td>
+                    <td>${whatsappIcon}${telegramBadge ? `<div style="margin-top:4px">${telegramBadge}</div>` : ''}</td>
                     <td><small>${creationTime}</small></td>
                     <td>${actions}</td>
                 </tr>
@@ -598,6 +600,13 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
         const previousWAFilter = $('#whatsapp-status-filter').val() || '';
 
         $results_container.html(html);
+
+        // Telegram controls live in a shared module; the page only says where
+        // they go and how to find the history currently on screen.
+        AgriTelegram.bind({
+            getHistoryId: () => historyId || currentHistoryId,
+            onRefresh: () => loadPDFStatusByHistory(historyId || currentHistoryId),
+        });
 
         // After render, reapply previous selections
         $('#pdf-status-tbody .row-checkbox').each(function () {

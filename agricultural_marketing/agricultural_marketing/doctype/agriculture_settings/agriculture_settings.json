@@ -50,7 +50,13 @@
   "enable_auto_cleanup",
   "cleanup_after_days",
   "show_customer_credit_details",
-  "allow_customer_credit_limit_below_outstanding"
+  "allow_customer_credit_limit_below_outstanding",
+  "telegram_section",
+  "enable_telegram_reports",
+  "telegram_settings",
+  "column_break_telegram",
+  "telegram_messages_per_minute",
+  "telegram_message_template"
  ],
  "fields": [
   {
@@ -338,13 +344,52 @@
    "fieldtype": "Link",
    "label": "Supplier Charges Mode of Payment",
    "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "telegram_section",
+   "fieldtype": "Section Break",
+   "label": "Telegram Reports"
+  },
+  {
+   "default": "0",
+   "description": "Adds Telegram alongside WhatsApp on the statement pages. Needs the Reflection Telegram app and a bot configured there.",
+   "fieldname": "enable_telegram_reports",
+   "fieldtype": "Check",
+   "label": "Enable Sending Reports via Telegram"
+  },
+  {
+   "depends_on": "enable_telegram_reports",
+   "fieldname": "telegram_settings",
+   "fieldtype": "Link",
+   "label": "Telegram Bot",
+   "mandatory_depends_on": "enable_telegram_reports",
+   "options": "Telegram Settings"
+  },
+  {
+   "fieldname": "column_break_telegram",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "depends_on": "enable_telegram_reports",
+   "description": "0 uses the rate set on the Telegram Settings record. Lower is safer for large runs.",
+   "fieldname": "telegram_messages_per_minute",
+   "fieldtype": "Int",
+   "label": "Telegram Messages Per Minute"
+  },
+  {
+   "depends_on": "enable_telegram_reports",
+   "description": "Caption sent with the statement PDF. Available: {party_name}, {party}, {from_date}, {to_date}, {company}.",
+   "fieldname": "telegram_message_template",
+   "fieldtype": "Small Text",
+   "label": "Telegram Message"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-27 14:24:04.093732",
+ "modified": "2026-08-20 06:28:04.931287",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Agriculture Settings",

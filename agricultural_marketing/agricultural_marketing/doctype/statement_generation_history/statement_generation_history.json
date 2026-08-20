@@ -32,7 +32,10 @@
   "whatsapp_job_id",
   "whatsapp_job_name",
   "pdf_logs_section",
-  "pdf_generator_logs"
+  "pdf_generator_logs",
+  "telegram_sent_count",
+  "telegram_skipped_count",
+  "telegram_broadcast"
  ],
  "fields": [
   {
@@ -203,11 +206,31 @@
    "fieldname": "statement_layout_v2",
    "fieldtype": "Check",
    "label": "Statement Layout V2"
+  },
+  {
+   "fieldname": "telegram_sent_count",
+   "fieldtype": "Int",
+   "label": "Telegram Sent Count",
+   "read_only": 1
+  },
+  {
+   "description": "Parties with no linked Telegram chat. They were not attempted, and are not failures.",
+   "fieldname": "telegram_skipped_count",
+   "fieldtype": "Int",
+   "label": "Telegram Skipped Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "telegram_broadcast",
+   "fieldtype": "Link",
+   "label": "Telegram Broadcast",
+   "options": "Telegram Broadcast",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-08-27 13:26:32.019086",
+ "modified": "2026-08-20 06:28:04.931287",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Statement Generation History",
