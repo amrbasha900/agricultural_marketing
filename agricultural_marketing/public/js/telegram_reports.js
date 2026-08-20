@@ -57,14 +57,63 @@ frappe.provide('AgriTelegram');
 		return '<span id="agri-telegram-actions"></span>';
 	}
 
+	// The Telegram mark, drawn inline: no icon-font dependency, and `currentColor`
+	// lets Frappe's text-* classes colour it correctly in both themes.
+	const PLANE =
+		'M9.04 15.47L8.7 20.2c.5 0 .72-.21.98-.47l2.35-2.24 4.87 3.56c.9.5 1.53.24 1.77-.83' +
+		'l3.2-15.02c.29-1.33-.48-1.85-1.35-1.53L1.2 9.9c-1.3.5-1.28 1.23-.22 1.56l4.96 1.55' +
+		'L17.4 6.1c.54-.35 1.03-.16.63.2z';
+
+	function glyph({ tone, struck, tooltip }) {
+		const slash = struck
+			? '<line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
+			: '';
+
+		return `<span class="${tone}" title="${frappe.utils.escape_html(tooltip)}" style="display:inline-flex">
+			<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align:-3px">
+				<path d="${PLANE}"${struck ? ' opacity="0.45"' : ''}/>${slash}
+			</svg>
+		</span>`;
+	}
+
+	/**
+	 * One small mark per row.
+	 *
+	 * A party with no linked chat is called out before anyone clicks: send status
+	 * alone cannot show it, because an unlinked party reads "Not Created" exactly
+	 * like one nobody has sent to yet.
+	 */
 	function badge(log) {
 		if (!config || !config.enabled) return '';
 
-		const status = log.telegram_status || 'Not Created';
-		const colour = STATUS_COLORS[status] || 'gray';
-		const title = log.telegram_error ? ` title="${frappe.utils.escape_html(log.telegram_error)}"` : '';
+		// undefined means the row predates link annotation; fall back to status.
+		if (log.telegram_linked === 0) {
+			return glyph({
+				tone: 'text-danger',
+				struck: true,
+				tooltip: __('No Telegram user linked — print this party a QR code'),
+			});
+		}
 
-		return `<span class="indicator-pill ${colour}"${title}>${__('TG')}: ${__(status)}</span>`;
+		const status = log.telegram_status || 'Not Created';
+		const detail = log.telegram_error ? ` — ${log.telegram_error}` : '';
+
+		switch (status) {
+			case 'Sent':
+				return glyph({ tone: 'text-success', tooltip: __('Sent on Telegram') });
+			case 'Queued':
+				return glyph({ tone: 'text-warning', tooltip: __('Queued for Telegram') });
+			case 'Failed':
+				return glyph({ tone: 'text-danger', tooltip: __('Telegram failed') + detail });
+			case 'Skipped':
+				return glyph({
+					tone: 'text-danger',
+					struck: true,
+					tooltip: __('Skipped') + detail,
+				});
+			default:
+				return glyph({ tone: 'text-muted', tooltip: __('Not sent on Telegram yet') });
+		}
 	}
 
 	/**
@@ -74,6 +123,12 @@ frappe.provide('AgriTelegram');
 	function rowButton(log) {
 		if (!config || !config.enabled) return '';
 		if (log.status !== 'Completed' || !log.pdf_file) return '';
+
+		// Offering "Send" to a party with no chat would just queue a guaranteed
+		// skip. Point at the thing that actually fixes it instead.
+		if (log.telegram_linked === 0) {
+			return ` <button class="btn btn-sm btn-default agri-telegram-qr" title="${__('No Telegram user linked')}">${__('Telegram QR')}</button>`;
+		}
 
 		const status = log.telegram_status || 'Not Created';
 
@@ -114,6 +169,10 @@ frappe.provide('AgriTelegram');
 
 	// Delegated once, at module load: the tables are rebuilt on every refresh, and
 	// rebinding per render is how duplicate handlers creep in.
+	$(document).on('click', '.agri-telegram-qr', function () {
+		frappe.set_route('telegram-qr');
+	});
+
 	$(document).on('click', '.agri-send-telegram', function () {
 		const $button = $(this);
 		const logId = $button.data('log-id');

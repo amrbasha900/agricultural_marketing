@@ -441,3 +441,44 @@ def get_unlinked_parties(history_id: str) -> list[dict]:
 		}
 		for row in rows
 	]
+
+
+@frappe.whitelist()
+def annotate_link_state(logs, party_type: str = None) -> list[dict]:
+	"""Mark each row with whether its party can receive on Telegram.
+
+	Send status alone cannot answer this: an unlinked party reads "Not Created",
+	exactly like one that simply has not been sent to yet. The pages need to show
+	the difference before anyone clicks, so this resolves it up front -- in one
+	query for the whole page rather than one per row.
+	"""
+	logs = logs or []
+	if not logs or not is_enabled():
+		return logs
+
+	bot = frappe.db.get_single_value(SETTINGS, "telegram_settings")
+	if not bot:
+		return logs
+
+	parties = {cstr(log.get("party_name")) for log in logs if log.get("party_name")}
+	if not parties:
+		return logs
+
+	linked = {
+		row.telegram_user
+		for row in frappe.get_all(
+			"Telegram User Settings",
+			filters={
+				"telegram_settings": bot,
+				"telegram_user": ["in", list(parties)],
+				"telegram_chat_id": ["is", "set"],
+				"chat_status": ["not in", ["Blocked", "Left"]],
+			},
+			fields=["telegram_user"],
+		)
+	}
+
+	for log in logs:
+		log["telegram_linked"] = 1 if cstr(log.get("party_name")) in linked else 0
+
+	return logs

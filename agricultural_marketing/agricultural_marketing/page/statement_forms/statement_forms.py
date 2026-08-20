@@ -1135,6 +1135,8 @@ def get_pdf_generation_status(filters=None, history_id=None):
                     pass
                 
                 logs.append(log_data)
+
+            _annotate_telegram(logs)
             
             return logs
             
@@ -1180,8 +1182,23 @@ def get_pdf_generation_status(filters=None, history_id=None):
         # Resolve display name
         display_field = "supplier_name" if log.party_type == "Supplier" else "customer_name"
         log["party_display_name"] = frappe.db.get_value(log.party_type, log.party_name, display_field) or log.party_name
-    
+
+    _annotate_telegram(logs)
     return logs
+
+
+def _annotate_telegram(logs):
+    """Tell the page which rows have a Telegram chat behind them.
+
+    Kept out of the callers' error paths: a Telegram problem must not stop the
+    PDF status list, which is the page's actual job.
+    """
+    try:
+        from agricultural_marketing.telegram_delivery import annotate_link_state
+
+        annotate_link_state(logs)
+    except Exception:
+        frappe.log_error(message=frappe.get_traceback(), title="Telegram link annotation failed")
 
 # ================================
 # MANAGEMENT FUNCTIONS
