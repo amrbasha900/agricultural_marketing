@@ -761,6 +761,8 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
             } else {
                 buttons += `<button class="btn btn-sm btn-primary send-whatsapp" data-log-id="${log.name}">${__('Send WhatsApp')}</button>`;
             }
+
+            buttons += AgriTelegram.rowButton(log);
         } else if (log.status === 'Failed') {
             buttons += `<button class="btn btn-sm btn-warning retry-pdf" data-log-id="${log.name}">${__('Retry')}</button> `;
             buttons += `<small class="text-danger">${frappe.utils.escape_html(log.error_message || 'Generation failed')}</small>`;

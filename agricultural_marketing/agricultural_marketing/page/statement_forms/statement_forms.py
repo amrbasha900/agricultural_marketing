@@ -1454,6 +1454,7 @@ def get_statement_generation_history(from_date=None, to_date=None, party_name=No
             "name", "company", "party_type", "party_group", "party", 
             "from_date", "to_date", "created_by_user", "generation_time",
             "total_parties", "completed_count", "failed_count", "whatsapp_sent_count",
+            "telegram_sent_count", "telegram_skipped_count", "telegram_broadcast",
             "description"
         ],
         order_by="generation_time desc",
@@ -2082,7 +2083,19 @@ def get_history_details(history_id):
         
         # Save any status updates
         history_doc.save(ignore_permissions=True)
-        
+
+        # Telegram statuses live in the queue and are pulled, not pushed, so the
+        # detail view has to ask before it renders.
+        try:
+            from agricultural_marketing.telegram_delivery import refresh_status
+
+            refresh_status(history_id)
+            history_doc.reload()
+        except Exception:
+            frappe.log_error(
+                message=frappe.get_traceback(), title="Telegram status refresh failed"
+            )
+
         return {
             "history": history_doc.as_dict(),
             "logs": [item.as_dict() for item in history_doc.pdf_generator_logs]

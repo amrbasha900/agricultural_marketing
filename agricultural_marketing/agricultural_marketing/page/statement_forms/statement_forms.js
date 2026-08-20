@@ -538,7 +538,10 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
                             <option value="Failed">${__('Failed')}</option>
                         </select>
                     </div>
-                    <div class="col-md-5">
+                    <div class="col-md-2">
+                        ${AgriTelegram.filterHtml('telegram-status-filter')}
+                    </div>
+                    <div class="col-md-3">
                         <small class="text-muted" id="search-results-info"></small>
                     </div>
                 </div>
@@ -571,7 +574,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
             const whatsappStatusSafe = (log.whatsapp_status || 'Not Created').toString();
 
             html += `
-                <tr data-log-id="${log.name}" data-party-name="${partyNameSafe.toLowerCase()}" data-party-id="${(log.party_name || '').toString().toLowerCase()}" data-wa-status="${whatsappStatusSafe}">
+                <tr data-log-id="${log.name}" data-party-name="${partyNameSafe.toLowerCase()}" data-party-id="${(log.party_name || '').toString().toLowerCase()}" data-wa-status="${whatsappStatusSafe}" data-tg-status="${(log.telegram_status || 'Not Created').toString()}">
                     <td><input type="checkbox" class="row-checkbox" value="${log.name}" ${log.status === 'Completed' ? '' : 'disabled'}></td>
                     <td class="party-name-cell">
                         <strong>${partyNameSafe || __('Unknown')}</strong>
@@ -598,6 +601,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
         // Preserve current filter selections across refresh (capture before DOM replacement)
         const previousPartySearch = $('#party-search').val() || '';
         const previousWAFilter = $('#whatsapp-status-filter').val() || '';
+        const previousTGFilter = $('#telegram-status-filter').val() || '';
 
         $results_container.html(html);
 
@@ -625,11 +629,19 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
             filterTableByPartyNameAndWhatsAppStatus(currentSearch, logs);
         });
 
+        $('#telegram-status-filter').on('change', function () {
+            const currentSearch = $('#party-search').val().toLowerCase().trim();
+            filterTableByPartyNameAndWhatsAppStatus(currentSearch, logs);
+        });
+
         bindStatusEvents(historyId);
 
         // Reapply previous filters after binding
         if (previousWAFilter) {
             $('#whatsapp-status-filter').val(previousWAFilter).trigger('change');
+        }
+        if (previousTGFilter) {
+            $('#telegram-status-filter').val(previousTGFilter).trigger('change');
         }
         if (previousPartySearch) {
             $('#party-search').val(previousPartySearch);
@@ -660,6 +672,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
         const $rows = $tbody.find('tr');
         const $resultsInfo = $('#search-results-info');
         const waFilter = $('#whatsapp-status-filter').val();
+        const tgFilter = $('#telegram-status-filter').val();
         let visibleCount = 0;
         const totalCount = Array.isArray(logs) ? logs.length : $rows.length;
 
@@ -668,11 +681,13 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
             const partyName = ($row.data('party-name') || '').toString();
             const partyId = ($row.data('party-id') || '').toString();
             const waStatus = ($row.data('wa-status') || 'Not Created').toString();
+            const tgStatus = ($row.data('tg-status') || 'Not Created').toString();
 
             const matchesNameOrId = !searchTerm || partyName.includes(searchTerm) || partyId.includes(searchTerm);
             const matchesWA = !waFilter || waStatus === waFilter;
+            const matchesTG = !tgFilter || tgStatus === tgFilter;
 
-            if (matchesNameOrId && matchesWA) {
+            if (matchesNameOrId && matchesWA && matchesTG) {
                 $row.show();
                 visibleCount++;
             } else {
@@ -681,7 +696,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
             }
         });
 
-        if (!searchTerm && !waFilter) {
+        if (!searchTerm && !waFilter && !tgFilter) {
             $resultsInfo.text('');
         } else {
             $resultsInfo.text(`${__('Showing')} ${visibleCount} ${__('of')} ${totalCount} ${__('parties')}`);
@@ -789,6 +804,8 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
             } else if (isSent) {
                 buttons += `<span class="text-success">${__('WhatsApp Sent')}</span>`;
             }
+
+            buttons += AgriTelegram.rowButton(log);
         } else if (log.status === 'Failed') {
             buttons += `<button class="btn btn-sm btn-warning retry-pdf" data-log-id="${log.name}">${__('Retry')}</button> `;
             buttons += `<small class="text-danger">${log.error_message || 'Generation failed'}</small>`;
@@ -1343,6 +1360,7 @@ frappe.pages['statement-forms'].on_page_load = function (wrapper) {
                     <td>
                         ${log.pdf_file ? `<button class="btn btn-sm btn-info" onclick="window.open('${log.pdf_file}', '_blank')">${__('Download')}</button>` : ''}
                         ${log.status === 'Completed' && (log.whatsapp_status === 'Not Created' || log.whatsapp_status === 'Failed') ? `<button class="btn btn-sm btn-primary send-whatsapp-detail" data-log-id="${log.pdf_generator_log}">${__('Send WhatsApp')}</button>` : ''}
+                        ${AgriTelegram.rowButton({ name: log.pdf_generator_log, status: log.status, pdf_file: log.pdf_file, telegram_status: log.telegram_status, telegram_error: log.telegram_error })}
                     </td>
                 </tr>
             `;

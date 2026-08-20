@@ -723,6 +723,8 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
             } else if (isSent) {
                 buttons += `<span class="text-success">${__('WhatsApp Sent')}</span>`;
             }
+
+            buttons += AgriTelegram.rowButton(log);
         } else if (log.status === 'Failed') {
             buttons += `<button class="btn btn-sm btn-warning retry-pdf" data-log-id="${log.name}">${__('Retry')}</button> `;
             buttons += `<small class="text-danger">${log.error_message || 'Generation failed'}</small>`;
@@ -1292,6 +1294,7 @@ frappe.pages['supplier-statement-forms'].on_page_load = function (wrapper) {
                     <td>
                         ${log.pdf_file ? `<button class="btn btn-sm btn-info" onclick="window.open('${log.pdf_file}', '_blank')">${__('Download')}</button>` : ''}
                         ${log.status === 'Completed' && (log.whatsapp_status === 'Not Created' || log.whatsapp_status === 'Failed') ? `<button class="btn btn-sm btn-primary send-whatsapp-detail" data-log-id="${log.pdf_generator_log}">${__('Send WhatsApp')}</button>` : ''}
+                        ${AgriTelegram.rowButton({ name: log.pdf_generator_log, status: log.status, pdf_file: log.pdf_file, telegram_status: log.telegram_status, telegram_error: log.telegram_error })}
                     </td>
                 </tr>
             `;

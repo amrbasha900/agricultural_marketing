@@ -27,6 +27,9 @@ frappe.provide('AgriTelegram');
 	// Redrawing the page re-runs bind(), which refreshes again. Without this the
 	// two would call each other forever, so onRefresh only fires on real change.
 	let lastSignature = null;
+	// Set by the most recent bind(), so the delegated row handler knows how to
+	// redraw whichever page it fired on.
+	let activeRedraw = null;
 
 	/** Resolved once per page load; every caller shares the same request. */
 	function loadConfig() {
@@ -65,12 +68,95 @@ frappe.provide('AgriTelegram');
 	}
 
 	/**
+	 * Per-row button, mirroring the WhatsApp one: send when nothing has been
+	 * tried, retry when it failed or was skipped, plain text once it is sent.
+	 */
+	function rowButton(log) {
+		if (!config || !config.enabled) return '';
+		if (log.status !== 'Completed' || !log.pdf_file) return '';
+
+		const status = log.telegram_status || 'Not Created';
+
+		if (status === 'Sent') {
+			return `<span class="text-success" style="margin-inline-start:6px">${__('Telegram Sent')}</span>`;
+		}
+
+		if (status === 'Queued') {
+			return `<span class="text-muted" style="margin-inline-start:6px">${__('Telegram Queued')}</span>`;
+		}
+
+		const label = status === 'Not Created' ? __('Send Telegram') : __('Retry Telegram');
+		const style = status === 'Not Created' ? 'btn-primary' : 'btn-warning';
+		let html = ` <button class="btn btn-sm ${style} agri-send-telegram" data-log-id="${log.name}">${label}</button>`;
+
+		if (log.telegram_error) {
+			html += `<small class="text-muted" style="margin-inline-start:6px">${frappe.utils.escape_html(log.telegram_error)}</small>`;
+		}
+
+		return html;
+	}
+
+	/** Options for a Telegram status filter, matching the WhatsApp one. */
+	function filterHtml(id) {
+		if (!config || !config.enabled) return '';
+
+		const options = ['', 'Not Created', 'Queued', 'Sent', 'Failed', 'Skipped'];
+		return `
+			<select class="form-control" id="${id || 'telegram-status-filter'}">
+				${options
+					.map(
+						(o) =>
+							`<option value="${o}">${o ? __(o) : __('All Telegram Statuses')}</option>`
+					)
+					.join('')}
+			</select>`;
+	}
+
+	// Delegated once, at module load: the tables are rebuilt on every refresh, and
+	// rebinding per render is how duplicate handlers creep in.
+	$(document).on('click', '.agri-send-telegram', function () {
+		const $button = $(this);
+		const logId = $button.data('log-id');
+		if (!logId) return;
+
+		$button.prop('disabled', true);
+
+		frappe.call({
+			method: `${METHOD}.queue_for_party`,
+			args: { log_id: logId },
+			callback: (r) => {
+				const res = r.message || {};
+
+				if (res.queued) {
+					frappe.show_alert({ message: __('Queued for Telegram'), indicator: 'green' });
+				} else {
+					// A skip is the common case here, and the reason is the useful part.
+					frappe.msgprint({
+						title: __('Not sent'),
+						indicator: 'orange',
+						message:
+							(res.skipped
+								? __('This party has no linked Telegram chat. Print them a QR code first.')
+								: res.message) || __('Nothing was queued'),
+					});
+				}
+
+				if (activeRedraw) activeRedraw();
+				else $button.prop('disabled', false);
+			},
+			error: () => $button.prop('disabled', false),
+		});
+	});
+
+	/**
 	 * Wire the controls into a page.
 	 *
 	 * @param {function} getHistoryId returns the history currently on screen
 	 * @param {function} onRefresh    called after anything changes, to redraw
 	 */
 	function bind({ getHistoryId, onRefresh }) {
+		activeRedraw = onRefresh ? () => onRefresh({}) : null;
+
 		loadConfig().then((cfg) => {
 			const $slot = $('#agri-telegram-actions');
 			if (!$slot.length) return;
@@ -233,6 +319,8 @@ frappe.provide('AgriTelegram');
 		loadConfig,
 		actionsHtml,
 		badge,
+		rowButton,
+		filterHtml,
 		bind,
 		refresh,
 		stopPolling,
