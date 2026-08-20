@@ -58,26 +58,57 @@ frappe.provide('AgriTelegram');
 	}
 
 	// The Telegram mark, drawn inline: no icon-font dependency, and `currentColor`
-	// lets Frappe's text-* classes colour it correctly in both themes.
+	// lets it inherit whatever colour the chip is using.
 	const PLANE =
 		'M9.04 15.47L8.7 20.2c.5 0 .72-.21.98-.47l2.35-2.24 4.87 3.56c.9.5 1.53.24 1.77-.83' +
 		'l3.2-15.02c.29-1.33-.48-1.85-1.35-1.53L1.2 9.9c-1.3.5-1.28 1.23-.22 1.56l4.96 1.55' +
 		'L17.4 6.1c.54-.35 1.03-.16.63.2z';
 
-	function glyph({ tone, struck, tooltip }) {
-		const slash = struck
-			? '<line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
-			: '';
+	/**
+	 * Status vocabulary, deliberately the same glyphs the WhatsApp column uses --
+	 * clock for waiting, tick for sent, crossed circle for failed -- so one column
+	 * teaches you how to read the other. The plane keeps them apart at a glance.
+	 *
+	 * There is no delivered or read state: Telegram gives bots no receipt beyond
+	 * "accepted", so a single tick is as far as this can honestly go.
+	 */
+	const STATES = {
+		unlinked: { icon: 'fa-ban', tone: 'gray', faded: true, label: __('No Telegram user') },
+		'Not Created': { icon: 'fa-circle-o', tone: 'gray', label: __('Not sent') },
+		Queued: { icon: 'fa-clock-o', tone: 'orange', label: __('Queued') },
+		Sent: { icon: 'fa-check', tone: 'green', label: __('Sent') },
+		Failed: { icon: 'fa-times-circle', tone: 'red', label: __('Failed') },
+		Skipped: { icon: 'fa-ban', tone: 'gray', faded: true, label: __('Skipped') },
+	};
 
-		return `<span class="${tone}" title="${frappe.utils.escape_html(tooltip)}" style="display:inline-flex">
-			<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align:-3px">
-				<path d="${PLANE}"${struck ? ' opacity="0.45"' : ''}/>${slash}
+	function injectStyles() {
+		if (document.getElementById('agri-tg-styles')) return;
+
+		// Only sizing. The colours come from Frappe's own indicator-pill classes so
+		// the chip matches the rest of the desk and follows the theme.
+		$(`<style id="agri-tg-styles">
+			.agri-tg { gap: 4px; white-space: nowrap; padding: 3px 8px; height: auto; }
+			.agri-tg svg { width: 12px; height: 12px; flex: 0 0 auto; }
+			.agri-tg .fa { font-size: 11px; }
+		</style>`).appendTo(document.head);
+	}
+
+	function chip(state, tooltip) {
+		injectStyles();
+
+		// The plane fades rather than being struck through: at 12px a diagonal
+		// stroke is illegible, and fa-ban already says "not available".
+		return `<span class="indicator-pill no-indicator-dot ${state.tone} agri-tg" title="${frappe.utils.escape_html(tooltip)}">
+			<svg viewBox="0 0 24 24" fill="currentColor"${state.faded ? ' opacity="0.45"' : ''}>
+				<path d="${PLANE}"/>
 			</svg>
+			<i class="fa ${state.icon}" aria-hidden="true"></i>
+			<span>${state.label}</span>
 		</span>`;
 	}
 
 	/**
-	 * One small mark per row.
+	 * One status chip per row.
 	 *
 	 * A party with no linked chat is called out before anyone clicks: send status
 	 * alone cannot show it, because an unlinked party reads "Not Created" exactly
@@ -88,32 +119,21 @@ frappe.provide('AgriTelegram');
 
 		// undefined means the row predates link annotation; fall back to status.
 		if (log.telegram_linked === 0) {
-			return glyph({
-				tone: 'text-danger',
-				struck: true,
-				tooltip: __('No Telegram user linked — print this party a QR code'),
-			});
+			return chip(STATES.unlinked, __('No Telegram user linked — print this party a QR code'));
 		}
 
 		const status = log.telegram_status || 'Not Created';
-		const detail = log.telegram_error ? ` — ${log.telegram_error}` : '';
+		const state = STATES[status] || STATES['Not Created'];
 
-		switch (status) {
-			case 'Sent':
-				return glyph({ tone: 'text-success', tooltip: __('Sent on Telegram') });
-			case 'Queued':
-				return glyph({ tone: 'text-warning', tooltip: __('Queued for Telegram') });
-			case 'Failed':
-				return glyph({ tone: 'text-danger', tooltip: __('Telegram failed') + detail });
-			case 'Skipped':
-				return glyph({
-					tone: 'text-danger',
-					struck: true,
-					tooltip: __('Skipped') + detail,
-				});
-			default:
-				return glyph({ tone: 'text-muted', tooltip: __('Not sent on Telegram yet') });
+		let tooltip = `${__('Telegram')}: ${state.label}`;
+		if (status === 'Sent') {
+			tooltip += ` — ${__('Telegram confirms it accepted the message; it gives bots no delivery or read receipt.')}`;
 		}
+		if (log.telegram_error) {
+			tooltip += ` — ${log.telegram_error}`;
+		}
+
+		return chip(state, tooltip);
 	}
 
 	/**
