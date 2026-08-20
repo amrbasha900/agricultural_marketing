@@ -237,11 +237,15 @@ def queue_all(history_id=None, log_ids=None, retry_failed: int = 0) -> dict:
 		broadcast = result.get("broadcast")
 		_attach_outbox_rows(history_id, broadcast)
 
-	if history_id:
+	# Only when there is something to record: an empty values dict builds an
+	# UPDATE with no columns, which MySQL rejects outright. Sending to a party
+	# that turns out to be unlinked produces exactly that -- no broadcast, and
+	# nothing to write.
+	if history_id and broadcast:
 		frappe.db.set_value(
 			"Statement Generation History",
 			history_id,
-			{"telegram_broadcast": broadcast} if broadcast else {},
+			{"telegram_broadcast": broadcast},
 			update_modified=False,
 		)
 
