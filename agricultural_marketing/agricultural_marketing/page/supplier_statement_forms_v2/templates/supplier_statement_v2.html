@@ -318,7 +318,9 @@
     .foot-note {
         text-align: center;
         font-size: 0.8em;
-        margin-top: 1.5mm;
+        /* Enough to clear the ledger's bottom border without reading as a
+           separate block -- it is a footnote to the table, not a new section. */
+        margin-top: 2.5mm;
     }
 </style>
 
@@ -450,20 +452,6 @@
                         <td colspan="9">
                             <table class="totals">
                                 <tr>
-                                    <td class="caption">حركة الاصناف</td>
-                                    <td class="tag">مبلغ مدين</td>
-                                    <td class="amount num">{{ totals.items_debit }}</td>
-                                    <td class="tag">مبلغ دائن</td>
-                                    <td class="amount num">{{ totals.items_credit }}</td>
-                                </tr>
-                                <tr>
-                                    <td class="caption">سعي الاصناف</td>
-                                    <td class="tag">مبلغ مدين</td>
-                                    <td class="amount num">{{ totals.commission_debit }}</td>
-                                    <td class="tag">مبلغ دائن</td>
-                                    <td class="amount num">{{ totals.commission_credit }}</td>
-                                </tr>
-                                <tr>
                                     <td class="caption">صافي الاصناف</td>
                                     <td class="tag">مبلغ مدين</td>
                                     <td class="amount num">{{ totals.net_items_debit }}</td>
@@ -497,17 +485,17 @@
                 {%- endif %}
             </table>
 
-            <div class="spacer"></div>
-
-            {% if page.is_last %}
-            <div class="foot-note">
-                {% if report_note %}
-                {{ report_note }}
-                {% else %}
-                ملاحظة مهمة: يعتبر الكشف صحيحاً مالم يتم الاعتراض عليه خلال خمسة أيام من تاريخه
-                {% endif %}
-            </div>
+            {# The note belongs to the closing totals, so it sits directly under
+            the ledger rather than floating at the foot of the sheet -- on a
+            short statement the spacer used to push it 60mm clear of the table
+            it refers to. It carries no text of its own: whatever is empty in
+            Agriculture Settings prints nothing, so the terms on the statement
+            are never a string hidden in this file. #}
+            {% if page.is_last and report_note %}
+            <div class="foot-note">{{ report_note }}</div>
             {% endif %}
+
+            <div class="spacer"></div>
 
         </div>
     </div>
