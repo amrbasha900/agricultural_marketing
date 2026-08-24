@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ar">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -139,6 +140,7 @@
         }
     </style>
 </head>
+
 <body>
     {% if letter_head %}
     <div>
@@ -174,17 +176,17 @@
         <div class="row supplier-section">
             {% if frappe.db.get_single_value("Agriculture Settings", "show_supplier_code_in_pdf") %}
             <div class="col-xs-6">
-                 <b>اسم المورد</b>: {{frappe.db.get_value("Supplier",doc.supplier,"supplier_name")}}
+                <b>اسم المورد</b>: {{frappe.db.get_value("Supplier",doc.supplier,"supplier_name")}}
             </div>
             <div class="col-xs-6">
-                 <b>كود المورد</b>: {{doc.supplier}}
+                <b>كود المورد</b>: {{doc.supplier}}
             </div>
             {%else%}
             <div class="col-xs-12">
-                 <b>اسم المورد</b>: {{frappe.db.get_value("Supplier",doc.supplier,"supplier_name")}}
+                <b>اسم المورد</b>: {{frappe.db.get_value("Supplier",doc.supplier,"supplier_name")}}
             </div>
             {%endif%}
-            
+
         </div>
 
         <!-- Invoice Table -->
@@ -193,7 +195,7 @@
                 <table>
                     <thead>
                         <tr>
-                            
+
                             <th>الصنف</th>
                             <th>السعر</th>
                             <th>الكمية</th>
@@ -211,7 +213,7 @@
                             <td>{{ item.qty|round(2) }}</td>
                             <td>{{ frappe.format_value(item.total|round(2), {"fieldtype": "Currency"}) }}</td>
                             <td>{{ item.customer }}</td>
-                            <td></td>
+                            <td>{{item.remark}}</td>
                             {% set ns.commission = ns.commission + item.commission %}
                         </tr>
                         {% endfor %}
@@ -258,21 +260,21 @@
             </div>
             <div class="col-xs-6">
                 <div class="summary-line total-line">
-                    {% if  doc.pamper %}
+                    {% if doc.pamper %}
                     <span>الدلال</span> :
                     <span>{{ frappe.db.get_value("Customer", doc.pamper, "customer_name") or ''}}</span>
                     {% endif %}
                 </div>
             </div>
         </div>
-        
+
 
         <!-- Amount in Words -->
         <div class="row">
             <div class="col-xs-12">
                 <div class="amount-words">
-                    {{get_currency_in_arabic(currency="SAR",  amount= (doc.grand_total))}}
-                                </div>
+                    {{get_currency_in_arabic(currency="SAR", amount= (doc.grand_total))}}
+                </div>
             </div>
         </div>
         <div class="row">
@@ -285,4 +287,5 @@
         </div>
     </div>
 </body>
+
 </html>
