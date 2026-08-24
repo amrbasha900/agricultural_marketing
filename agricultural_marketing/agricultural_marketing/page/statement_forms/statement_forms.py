@@ -1122,6 +1122,8 @@ def get_pdf_generation_status(filters=None, history_id=None):
                     "whatsapp_sent": 1 if whatsapp_status in ("Sent", "Delivered", "Read") else 0,
                     "whatsapp_message_id": item.whatsapp_message_id,
                     "whatsapp_status": whatsapp_status,
+                    "telegram_status": item.get("telegram_status") or "Not Created",
+                    "telegram_error": item.get("telegram_error"),
                 }
                 
                 # Get additional data from PDF Generator Log if needed
@@ -1133,6 +1135,8 @@ def get_pdf_generation_status(filters=None, history_id=None):
                     pass
                 
                 logs.append(log_data)
+
+            _annotate_telegram(logs)
             
             return logs
             
@@ -1162,7 +1166,7 @@ def get_pdf_generation_status(filters=None, history_id=None):
         fields=[
             "name", "party_name", "party_type", "status", "pdf_file", 
             "error_message", "creation_time", "completion_time", "whatsapp_sent",
-            "whatsapp_message_id"
+            "whatsapp_message_id", "telegram_status", "telegram_error"
         ],
         order_by="creation desc",
         limit=200
@@ -1178,8 +1182,23 @@ def get_pdf_generation_status(filters=None, history_id=None):
         # Resolve display name
         display_field = "supplier_name" if log.party_type == "Supplier" else "customer_name"
         log["party_display_name"] = frappe.db.get_value(log.party_type, log.party_name, display_field) or log.party_name
-    
+
+    _annotate_telegram(logs)
     return logs
+
+
+def _annotate_telegram(logs):
+    """Tell the page which rows have a Telegram chat behind them.
+
+    Kept out of the callers' error paths: a Telegram problem must not stop the
+    PDF status list, which is the page's actual job.
+    """
+    try:
+        from agricultural_marketing.telegram_delivery import annotate_link_state
+
+        annotate_link_state(logs)
+    except Exception:
+        frappe.log_error(message=frappe.get_traceback(), title="Telegram link annotation failed")
 
 # ================================
 # MANAGEMENT FUNCTIONS
@@ -1452,6 +1471,7 @@ def get_statement_generation_history(from_date=None, to_date=None, party_name=No
             "name", "company", "party_type", "party_group", "party", 
             "from_date", "to_date", "created_by_user", "generation_time",
             "total_parties", "completed_count", "failed_count", "whatsapp_sent_count",
+            "telegram_sent_count", "telegram_skipped_count", "telegram_broadcast",
             "description"
         ],
         order_by="generation_time desc",
@@ -2080,7 +2100,19 @@ def get_history_details(history_id):
         
         # Save any status updates
         history_doc.save(ignore_permissions=True)
-        
+
+        # Telegram statuses live in the queue and are pulled, not pushed, so the
+        # detail view has to ask before it renders.
+        try:
+            from agricultural_marketing.telegram_delivery import refresh_status
+
+            refresh_status(history_id)
+            history_doc.reload()
+        except Exception:
+            frappe.log_error(
+                message=frappe.get_traceback(), title="Telegram status refresh failed"
+            )
+
         return {
             "history": history_doc.as_dict(),
             "logs": [item.as_dict() for item in history_doc.pdf_generator_logs]

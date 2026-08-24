@@ -634,6 +634,7 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
                         <button class="btn btn-sm sf-action-btn" id="send-selected-whatsapp">${__('Send Selected to WhatsApp')}</button>
                         <button class="btn btn-sm sf-action-btn" id="retry-all-whatsapp">${__('Retry All WhatsApp')}</button>
                         <button class="btn btn-sm sf-action-btn" id="cancel-whatsapp-queue">${__('Cancel WhatsApp Queue')}</button>
+                        ${AgriTelegram.actionsHtml()}
                         ${failed && historyId ? `<button class="btn btn-sm sf-action-btn" id="retry-all-failed">${__('Retry All Failed')}</button>` : ''}
                         ${historyId ? `<button class="btn btn-sm sf-action-btn" id="retry-all-queued-failed">${__('Retry All Queued/Failed')}</button>` : ''}
                         ${isAdmin ? `<button class="btn btn-sm sf-action-btn" id="cleanup-jobs">${__('Cleanup Stuck')}</button>` : ''}
@@ -690,7 +691,7 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
                     <td class="party-name-cell"><strong>${frappe.utils.escape_html(name) || __('Unknown')}</strong></td>
                     <td><small>${frappe.utils.escape_html(log.party_name || '')}</small></td>
                     <td>${statusBadge(log.status)}</td>
-                    <td>${whatsappIcon(waStatus)}</td>
+                    <td>${whatsappIcon(waStatus)}${AgriTelegram.badge(log) ? `<div style="margin-top:4px">${AgriTelegram.badge(log)}</div>` : ''}</td>
                     <td><small>${log.creation_time ? frappe.datetime.str_to_user(log.creation_time) : ''}</small></td>
                     <td>${actionButtons(log)}</td>
                 </tr>
@@ -704,6 +705,13 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
         const previousWA = $('#whatsapp-status-filter').val() || '';
 
         $results_container.html(html);
+
+        // Telegram controls live in a shared module; the page only says where
+        // they go and how to find the history currently on screen.
+        AgriTelegram.bind({
+            getHistoryId: () => historyId || currentHistoryId,
+            onRefresh: () => loadPDFStatusByHistory(historyId || currentHistoryId),
+        });
 
         $('#pdf-status-tbody .row-checkbox').each(function () {
             if (previouslySelected.has(this.value)) $(this).prop('checked', true);
@@ -753,6 +761,8 @@ frappe.pages['supplier-statement-forms-v2'].on_page_load = function (wrapper) {
             } else {
                 buttons += `<button class="btn btn-sm btn-primary send-whatsapp" data-log-id="${log.name}">${__('Send WhatsApp')}</button>`;
             }
+
+            buttons += AgriTelegram.rowButton(log);
         } else if (log.status === 'Failed') {
             buttons += `<button class="btn btn-sm btn-warning retry-pdf" data-log-id="${log.name}">${__('Retry')}</button> `;
             buttons += `<small class="text-danger">${frappe.utils.escape_html(log.error_message || 'Generation failed')}</small>`;
