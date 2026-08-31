@@ -5,7 +5,7 @@ import random
 from sys import exception
 import frappe
 from frappe import _, error_log
-from frappe.utils import getdate, flt, now
+from frappe.utils import getdate, flt, now, add_to_date
 from frappe.utils.jinja_globals import is_rtl
 from frappe.utils.pdf import get_pdf as _get_pdf
 from frappe.query_builder.functions import Sum
@@ -795,7 +795,7 @@ import os
 import random
 import frappe
 from frappe import _
-from frappe.utils import getdate, flt, now
+from frappe.utils import getdate, flt, now, add_to_date
 from frappe.utils.jinja_globals import is_rtl
 from frappe.utils.pdf import get_pdf as _get_pdf
 from frappe.query_builder.functions import Sum
@@ -857,6 +857,7 @@ def queue_pdf_generation(filters):
     
     # Create PDF Generator Log entries only for parties with actual data
     log_entries = []
+    queued_jobs = []
     skipped_parties = []
     
     for party in parties_with_data:
@@ -882,7 +883,8 @@ def queue_pdf_generation(filters):
         })
         log_entry.insert(ignore_permissions=True)
         log_entries.append(log_entry.name)
-        
+        queued_jobs.append((party, log_entry.name))
+
         # Add to history child table
         history_doc.append("pdf_generator_logs", {
             "pdf_generator_log": log_entry.name,
@@ -890,23 +892,29 @@ def queue_pdf_generation(filters):
             "status": "Queued",
             "whatsapp_status": "Not Created"
         })
-        
-        # Queue background job for each party with better job naming
-        safe_party_name = frappe.scrub(party).replace("_", "-")[:30]
-        frappe.enqueue(
-            method=generate_single_party_pdf,
-            log_id=log_entry.name,
-            party_name=party,
-            history_id=history_doc.name,
-            job_name=f"PDF-{safe_party_name}",
-            timeout=300,
-            is_async=True
-        )
-    
+
     # Save history with child table entries
     history_doc.save(ignore_permissions=True)
     frappe.db.commit()
-    
+
+    # Only now that every log row is committed may the jobs be enqueued. A worker
+    # runs on its own DB connection and cannot see uncommitted rows, so enqueueing
+    # inside the loop above let idle workers pop the first few jobs before the
+    # commit landed -- get_doc raised DoesNotExistError and those parties stayed
+    # "Queued" forever. That is why a batch always lost its first N statements,
+    # N being roughly the number of idle workers.
+    for party, log_name in queued_jobs:
+        frappe.enqueue(
+            method=generate_single_party_pdf,
+            log_id=log_name,
+            party_name=party,
+            history_id=history_doc.name,
+            job_id=f"pdf-gen-{log_name}",
+            deduplicate=True,
+            timeout=300,
+            is_async=True
+        )
+
     result_message = f"Queued {len(log_entries)} PDF generation jobs"
     if skipped_parties:
         result_message += f" (skipped {len(skipped_parties)} parties with no data)"
@@ -1072,9 +1080,13 @@ def generate_single_pdf(filters, party_name):
                 "content": content
             })
             file_doc.save(ignore_permissions=True)
+            return {"success": True, "file_url": file_doc.file_url}
         except Exception as e:
+            # Returning the real reason here matters: this used to fall through to
+            # file_doc.file_url on an unbound name, so every render or PDF failure
+            # surfaced as a misleading UnboundLocalError.
             frappe.log_error(message=f"Error PDF HTML Tempalte : {str(e)}", title="Error PDF HTML Tempalte")
-        return {"success": True, "file_url": file_doc.file_url}
+            return {"error": str(e)}
         
     except Exception as e:
         return {"error": str(e)}
@@ -2734,8 +2746,17 @@ def check_and_repair_queued_logs():
     Returns a list of dicts with log_id, issues, and actions.
     """
     results = []
-    logs = frappe.get_all("PDF Generator Log", filters={"status": "Queued"}, fields=["name", "filters_json", "party_name", "company", "statement_generation_history"])
+    logs = frappe.get_all(
+        "PDF Generator Log",
+        filters={"status": ["in", ["Queued", "Processing"]]},
+        fields=["name", "filters_json", "party_name", "company", "status", "statement_generation_history"],
+    )
     for log in logs:
+        if log.status == "Processing":
+            # Abandoned by a dead worker; the generator short-circuits on its own
+            # "already Processing" guard unless it is handed back to Queued first.
+            frappe.db.set_value("PDF Generator Log", log.name, "status", "Queued")
+            frappe.db.commit()
         issues = []
         actions = []
         log_id = log.name
@@ -2776,14 +2797,13 @@ def check_and_repair_queued_logs():
         if not issues or (len(issues) == 1 and issues[0].startswith("Not present in history child table")):
             try:
                 # Re-queue the job
-                from frappe.utils import now
-                safe_party_name = frappe.scrub(log.party_name or log_id).replace("_", "-")[:30]
                 frappe.enqueue(
                     method=generate_single_party_pdf,
                     log_id=log_id,
                     party_name=log.party_name,
                     history_id=history_id,
-                    job_name=f"PDF-Requeue-{safe_party_name}",
+                    job_id=f"pdf-gen-{log_id}",
+                    deduplicate=True,
                     timeout=300,
                     is_async=True
                 )
@@ -2797,6 +2817,27 @@ def check_and_repair_queued_logs():
         })
     return results
 
+def _load_pdf_log_with_retry(log_id, logger=None, attempts=3, delay=2):
+    """Load a PDF Generator Log, tolerating a row that is still being committed.
+
+    Jobs are enqueued after commit now, but a worker can still pop a job a hair
+    before the row is visible on its own connection. Rather than dropping the
+    party silently, wait briefly and look again.
+    """
+    for attempt in range(attempts):
+        if frappe.db.exists("PDF Generator Log", log_id):
+            return frappe.get_doc("PDF Generator Log", log_id)
+        if attempt < attempts - 1:
+            if logger:
+                logger.warning(
+                    f"PDF Generator Log {log_id} not visible yet (attempt {attempt + 1}/{attempts}), retrying"
+                )
+            time.sleep(delay)
+            # Drop the transaction snapshot so the next read sees fresh rows.
+            frappe.db.commit()
+    raise frappe.DoesNotExistError(f"PDF Generator Log {log_id} not found")
+
+
 # Add more logging to generate_single_party_pdf
 
 def generate_single_party_pdf(log_id, party_name=None, history_id=None):
@@ -2809,13 +2850,15 @@ def generate_single_party_pdf(log_id, party_name=None, history_id=None):
     try:
         # Try to get the log document with better error handling
         try:
-            log_doc = frappe.get_doc("PDF Generator Log", log_id)
+            log_doc = _load_pdf_log_with_retry(log_id, logger)
             logger.info(f"Loaded PDF Generator Log: {log_id}")
         except frappe.DoesNotExistError:
             logger.error(f"PDF Generator Log {log_id} does not exist")
             if history_id:
                 update_history_item_status(history_id, log_id, "Failed", error_message="PDF log not found (possibly deleted)")
-            return
+            # Re-raise so RQ records a failed job instead of the party vanishing
+            # from the batch with no trace anywhere.
+            raise
         except Exception as doc_error:
             logger.error(f"Error loading PDF Generator Log {log_id}: {str(doc_error)}")
             frappe.log_error(message=f"Error loading PDF Generator Log {log_id}: {str(doc_error)}", title="PDF Generation")
@@ -2938,19 +2981,61 @@ def generate_single_party_pdf(log_id, party_name=None, history_id=None):
 
 
 
+QUEUED_STALE_MINUTES = 1
+PROCESSING_STALE_MINUTES = 10
+
+
+def _get_stale_pdf_logs(history_id=None):
+    """PDF Generator Logs that need re-queueing, with a staleness window.
+
+    "Queued" rows younger than QUEUED_STALE_MINUTES are skipped so a batch that
+    was just submitted is left to its own jobs; past that the stable job_id and
+    deduplicate=True on the re-enqueue keep a still-waiting job from being
+    duplicated. "Processing" rows are only reclaimed once they are older than the
+    job timeout (300s), so a genuinely running job is left alone.
+    """
+    log = frappe.qb.DocType("PDF Generator Log")
+    queued_cutoff = add_to_date(now(), minutes=-QUEUED_STALE_MINUTES)
+    processing_cutoff = add_to_date(now(), minutes=-PROCESSING_STALE_MINUTES)
+
+    query = (
+        frappe.qb.from_(log)
+        .select(log.name, log.party_name, log.status, log.statement_generation_history)
+        .where(
+            ((log.status == "Queued") & (log.modified <= queued_cutoff))
+            | ((log.status == "Processing") & (log.modified <= processing_cutoff))
+        )
+    )
+    if history_id:
+        query = query.where(log.statement_generation_history == history_id)
+
+    return query.run(as_dict=True)
+
+
 def retry_all_queued_pdf_jobs():
     """
-    Scheduled task: Retry all queued PDF Generator Logs every minute.
+    Scheduled task: retry stalled PDF Generator Logs every minute.
+
+    Covers logs left in "Queued" as well as logs abandoned in "Processing" by a
+    worker that died mid-job -- the latter used to be a dead end, since every
+    retry path filtered on Queued/Failed only.
     Detects supplier-statement logs and routes them to the correct generator
     so they use supplier_statement_forms.html instead of statement_forms.html.
     """
-    logs = frappe.get_all(
-        "PDF Generator Log",
-        filters={"status": "Queued"},
-        fields=["name", "party_name", "statement_generation_history"],
-    )
+    logs = _get_stale_pdf_logs()
     for log in logs:
         try:
+            # A log stuck in "Processing" means its worker died after claiming it
+            # (job timeout, OOM, worker restart). Nothing else ever retries that
+            # state, so hand it back to "Queued" before re-enqueueing.
+            if log["status"] == "Processing":
+                frappe.db.set_value("PDF Generator Log", log["name"], "status", "Queued")
+                if log.get("statement_generation_history"):
+                    update_history_item_status_safe(
+                        log["statement_generation_history"], log["name"], "Queued"
+                    )
+                frappe.db.commit()
+
             # Determine if this log belongs to a supplier-statement history
             is_supplier_statement = False
             if log.get("statement_generation_history"):
@@ -3001,13 +3086,17 @@ def retry_all_queued_pdf_jobs():
                     is_async=True,
                 )
             else:
-                # Use the standard statement-forms PDF generator
+                # Use the standard statement-forms PDF generator. Same stable
+                # job_id as the supplier branch: without it this sweep re-queued
+                # every still-waiting log once a minute, multiplying the tail of
+                # a large batch across every worker.
                 frappe.enqueue(
                     method=generate_single_party_pdf,
                     log_id=log["name"],
                     party_name=log["party_name"],
                     history_id=log["statement_generation_history"],
-                    job_name=f"PDF-Scheduled-Retry-{log['name']}",
+                    job_id=f"pdf-gen-{log['name']}",
+                    deduplicate=True,
                     timeout=300,
                     is_async=True,
                 )
@@ -3048,11 +3137,20 @@ def retry_all_queued_and_failed_pdf_jobs_for_history(history_id):
 
     logs = frappe.get_all(
         "PDF Generator Log",
-        filters={"statement_generation_history": history_id, "status": ["in", ["Queued", "Failed"]]},
-        fields=["name", "party_name", "statement_generation_history"],
+        filters={
+            "statement_generation_history": history_id,
+            "status": ["in", ["Queued", "Failed", "Processing"]],
+        },
+        fields=["name", "party_name", "status", "statement_generation_history"],
     )
     for log in logs:
         try:
+            # A row left in "Processing" by a dead worker has to go back to
+            # "Queued", otherwise the generator short-circuits on its own guard.
+            if log["status"] == "Processing":
+                frappe.db.set_value("PDF Generator Log", log["name"], "status", "Queued")
+                update_history_item_status_safe(history_id, log["name"], "Queued")
+                frappe.db.commit()
             if is_supplier_statement:
                 frappe.enqueue(
                     method=supplier_generator,

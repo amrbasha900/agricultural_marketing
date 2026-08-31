@@ -1337,6 +1337,7 @@ def queue_pdf_generation(filters):
     history_doc.insert(ignore_permissions=True)
 
     log_entries = []
+    queued_jobs = []
     for supplier in suppliers:
         filters_for_log = dict(filters)
         filters_for_log["party"] = supplier
@@ -1359,6 +1360,7 @@ def queue_pdf_generation(filters):
         )
         log_entry.insert(ignore_permissions=True)
         log_entries.append(log_entry.name)
+        queued_jobs.append((supplier, log_entry.name))
 
         history_doc.append(
             "pdf_generator_logs",
@@ -1370,20 +1372,25 @@ def queue_pdf_generation(filters):
             },
         )
 
-        safe_name = frappe.scrub(supplier).replace("_", "-")[:30]
+
+    history_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    # Enqueue only after the commit: a worker reads on its own connection and
+    # cannot see uncommitted log rows, so enqueueing inside the loop above let
+    # idle workers pop the first few jobs, hit DoesNotExistError and leave those
+    # suppliers stuck on "Queued" forever.
+    for supplier, log_name in queued_jobs:
         frappe.enqueue(
             method=generate_single_supplier_pdf_v2,
-            log_id=log_entry.name,
+            log_id=log_name,
             supplier_name=supplier,
             history_id=history_doc.name,
-            job_id="pdf-gen-{0}".format(log_entry.name),
+            job_id="pdf-gen-{0}".format(log_name),
             deduplicate=True,
             timeout=300,
             is_async=True,
         )
-
-    history_doc.save(ignore_permissions=True)
-    frappe.db.commit()
 
     frappe.publish_realtime(
         "pdf_generation_status",
@@ -1409,13 +1416,15 @@ def generate_single_supplier_pdf_v2(log_id, supplier_name=None, history_id=None)
 
     try:
         try:
-            log_doc = frappe.get_doc("PDF Generator Log", log_id)
+            log_doc = v1._load_pdf_log_with_retry(log_id)
         except frappe.DoesNotExistError:
             if history_id:
                 v1.update_history_item_status_safe(
                     history_id, log_id, "Failed", error_message="PDF log not found"
                 )
-            return
+            # Re-raise so RQ records a failed job instead of the supplier
+            # vanishing from the batch with no trace anywhere.
+            raise
 
         log_doc.status = "Processing"
         log_doc.save(ignore_permissions=True)

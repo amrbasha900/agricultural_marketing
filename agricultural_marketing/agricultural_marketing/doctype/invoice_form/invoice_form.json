@@ -52,7 +52,8 @@
   "section_break_euqh",
   "has_supplier_commission_invoice",
   "bulk_invoice_reference",
-  "invoice_remark"
+  "invoice_remark",
+  "idempotency_key"
  ],
  "fields": [
   {
@@ -359,13 +360,23 @@
    "label": "Charge Payment Line",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "idempotency_key",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Idempotency Key",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1,
+   "unique": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-28 01:25:03.864963",
+ "modified": "2026-08-26 17:29:27.761478",
  "modified_by": "Administrator",
  "module": "Agricultural Marketing",
  "name": "Invoice Form",

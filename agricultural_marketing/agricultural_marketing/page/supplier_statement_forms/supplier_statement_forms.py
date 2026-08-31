@@ -64,6 +64,7 @@ def queue_pdf_generation(filters):
     
     # Create PDF Generator Log entries for suppliers with data
     log_entries = []
+    queued_jobs = []
     #suppliers_with_data.append('0010891')
     for supplier in suppliers_with_data:
         filters_for_log = dict(filters)
@@ -85,7 +86,8 @@ def queue_pdf_generation(filters):
         })
         log_entry.insert(ignore_permissions=True)
         log_entries.append(log_entry.name)
-        
+        queued_jobs.append((supplier, log_entry.name))
+
         # Add to history child table
         history_doc.append("pdf_generator_logs", {
             "pdf_generator_log": log_entry.name,
@@ -93,22 +95,26 @@ def queue_pdf_generation(filters):
             "status": "Queued",
             "whatsapp_status": "Not Created"
         })
-        
-        # Queue background job for each supplier
-        safe_supplier_name = frappe.scrub(supplier).replace("_", "-")[:30]
-        frappe.enqueue(
-            method=generate_single_supplier_pdf,
-            log_id=log_entry.name,
-            supplier_name=supplier,
-            history_id=history_doc.name,
-            job_name=f"SupplierPDF-{safe_supplier_name}",
-            timeout=300,
-            is_async=True
-        )
-    
+
     # Save history with child table entries
     history_doc.save(ignore_permissions=True)
     frappe.db.commit()
+
+    # Enqueue only after the commit: a worker reads on its own connection and
+    # cannot see uncommitted log rows, so enqueueing inside the loop above let
+    # idle workers pop the first few jobs, hit DoesNotExistError and leave those
+    # suppliers stuck on "Queued" forever.
+    for supplier, log_name in queued_jobs:
+        frappe.enqueue(
+            method=generate_single_supplier_pdf,
+            log_id=log_name,
+            supplier_name=supplier,
+            history_id=history_doc.name,
+            job_id=f"pdf-gen-{log_name}",
+            deduplicate=True,
+            timeout=300,
+            is_async=True
+        )
     
     result_message = f"Queued {len(log_entries)} supplier PDF generation jobs"
     
@@ -1495,6 +1501,23 @@ def _read_supplier_html_template():
         return f.read()
 
 
+def _load_pdf_log_with_retry(log_id, attempts=3, delay=2):
+    """Load a PDF Generator Log, tolerating a row that is still being committed.
+
+    Jobs are enqueued after commit now, but a worker can still pop a job a hair
+    before the row is visible on its own connection. Rather than dropping the
+    supplier silently, wait briefly and look again.
+    """
+    for attempt in range(attempts):
+        if frappe.db.exists("PDF Generator Log", log_id):
+            return frappe.get_doc("PDF Generator Log", log_id)
+        if attempt < attempts - 1:
+            time.sleep(delay)
+            # Drop the transaction snapshot so the next read sees fresh rows.
+            frappe.db.commit()
+    raise frappe.DoesNotExistError(f"PDF Generator Log {log_id} not found")
+
+
 def generate_single_supplier_pdf(log_id, supplier_name=None, history_id=None):
     """Generate PDF for a single supplier – fully self-contained.
 
@@ -1508,11 +1531,13 @@ def generate_single_supplier_pdf(log_id, supplier_name=None, history_id=None):
     try:
         # ── 1. Load the PDF Generator Log ──────────────────────────────
         try:
-            log_doc = frappe.get_doc("PDF Generator Log", log_id)
+            log_doc = _load_pdf_log_with_retry(log_id)
         except frappe.DoesNotExistError:
             if history_id:
                 update_history_item_status_safe(history_id, log_id, "Failed", error_message="PDF log not found")
-            return
+            # Re-raise so RQ records a failed job instead of the supplier
+            # vanishing from the batch with no trace anywhere.
+            raise
 
         # ── 2. Mark as Processing ──────────────────────────────────────
         log_doc.status = "Processing"
