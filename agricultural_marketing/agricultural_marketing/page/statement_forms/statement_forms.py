@@ -9,7 +9,7 @@ from frappe.utils import getdate, flt, now, add_to_date
 from frappe.utils.jinja_globals import is_rtl
 from frappe.utils.pdf import get_pdf as _get_pdf
 from frappe.query_builder.functions import Sum
-from pypika import Case
+from pypika import Case, Order
 from pypika.terms import Term
 import time
 # @frappe.whitelist()
@@ -799,7 +799,7 @@ from frappe.utils import getdate, flt, now, add_to_date
 from frappe.utils.jinja_globals import is_rtl
 from frappe.utils.pdf import get_pdf as _get_pdf
 from frappe.query_builder.functions import Sum
-from pypika import Case
+from pypika import Case, Order
 from pypika.terms import Term
 import time
 
@@ -2750,6 +2750,8 @@ def check_and_repair_queued_logs():
         "PDF Generator Log",
         filters={"status": ["in", ["Queued", "Processing"]]},
         fields=["name", "filters_json", "party_name", "company", "status", "statement_generation_history"],
+        order_by="creation desc",
+        limit_page_length=RETRY_BATCH_LIMIT,
     )
     for log in logs:
         if log.status == "Processing":
@@ -2968,7 +2970,23 @@ def generate_single_party_pdf(log_id, party_name=None, history_id=None):
     # Save the final status (only if log_doc exists and no exceptions occurred)
     if log_doc:
         try:
-            log_doc.save(ignore_permissions=True)
+            # Write the terminal status with set_value rather than doc.save().
+            # save() compares timestamps, so any concurrent touch of the row --
+            # the retry sweep, a second job, a user opening the form -- raised
+            # TimestampMismatchError here and left the log stranded on
+            # "Processing", where the sweep would pick it up and retry it again,
+            # forever. This job owns the outcome of its own log row, so write
+            # those fields directly.
+            frappe.db.set_value(
+                "PDF Generator Log",
+                log_id,
+                {
+                    "status": log_doc.status,
+                    "pdf_file": log_doc.pdf_file,
+                    "error_message": log_doc.error_message,
+                    "completion_time": log_doc.completion_time,
+                },
+            )
             frappe.db.commit()
             logger.info(f"[END] generate_single_party_pdf: log_id={log_id}, status={log_doc.status}")
             # Update history summary counts
@@ -2983,9 +3001,36 @@ def generate_single_party_pdf(log_id, party_name=None, history_id=None):
 
 QUEUED_STALE_MINUTES = 1
 PROCESSING_STALE_MINUTES = 10
+# Never resurrect logs from old batches. Without this ceiling the sweep reaches
+# back across the whole table and re-queues every dead row ever accumulated,
+# once a minute, which buries the default queue and starves real work.
+RETRY_MAX_AGE_HOURS = 12
+# Hard ceiling on what a single sweep may enqueue, so a backlog drains steadily
+# instead of flooding the queue in one run.
+RETRY_BATCH_LIMIT = 25
+# If the default queue is already this deep, the workers are behind and adding
+# retries only makes the backlog worse. Skip the run and let them catch up.
+RETRY_QUEUE_DEPTH_CEILING = 200
 
 
-def _get_stale_pdf_logs(history_id=None):
+def _queue_is_congested():
+    """True when the default queue already has more work than we should add to."""
+    try:
+        from frappe.utils.background_jobs import get_queue
+
+        depth = get_queue("default").count
+        if depth >= RETRY_QUEUE_DEPTH_CEILING:
+            frappe.logger("pdf_generation").warning(
+                f"Skipping PDF retry sweep: default queue depth {depth} >= {RETRY_QUEUE_DEPTH_CEILING}"
+            )
+            return True
+    except Exception as e:
+        # Never let a monitoring failure block the sweep itself.
+        frappe.logger("pdf_generation").error(f"Could not read queue depth: {e}")
+    return False
+
+
+def _get_stale_pdf_logs(history_id=None, max_age_hours=RETRY_MAX_AGE_HOURS, limit=RETRY_BATCH_LIMIT):
     """PDF Generator Logs that need re-queueing, with a staleness window.
 
     "Queued" rows younger than QUEUED_STALE_MINUTES are skipped so a batch that
@@ -2993,6 +3038,10 @@ def _get_stale_pdf_logs(history_id=None):
     deduplicate=True on the re-enqueue keep a still-waiting job from being
     duplicated. "Processing" rows are only reclaimed once they are older than the
     job timeout (300s), so a genuinely running job is left alone.
+
+    Bounded on both ends -- an age ceiling and a row limit, newest batches first
+    -- because this runs every minute and must never be able to enqueue more
+    work than the workers can drain.
     """
     log = frappe.qb.DocType("PDF Generator Log")
     queued_cutoff = add_to_date(now(), minutes=-QUEUED_STALE_MINUTES)
@@ -3005,7 +3054,11 @@ def _get_stale_pdf_logs(history_id=None):
             ((log.status == "Queued") & (log.modified <= queued_cutoff))
             | ((log.status == "Processing") & (log.modified <= processing_cutoff))
         )
+        .orderby(log.creation, order=Order.desc)
+        .limit(limit)
     )
+    if max_age_hours:
+        query = query.where(log.creation >= add_to_date(now(), hours=-max_age_hours))
     if history_id:
         query = query.where(log.statement_generation_history == history_id)
 
@@ -3022,6 +3075,9 @@ def retry_all_queued_pdf_jobs():
     Detects supplier-statement logs and routes them to the correct generator
     so they use supplier_statement_forms.html instead of statement_forms.html.
     """
+    if _queue_is_congested():
+        return
+
     logs = _get_stale_pdf_logs()
     for log in logs:
         try:
