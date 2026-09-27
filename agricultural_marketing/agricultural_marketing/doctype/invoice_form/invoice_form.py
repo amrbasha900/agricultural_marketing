@@ -1108,7 +1108,6 @@ class InvoiceForm(Document):
             
             # Get the original item line idx this return is for
             original_item_idx = getattr(return_item, 'original_item_idx', None)
-            frappe.errprint(type(original_item_idx))
             
             if not original_item_idx:
                 frappe.throw(_(
@@ -1122,7 +1121,6 @@ class InvoiceForm(Document):
                 if item.idx == int(original_item_idx):
                     original_item = item
                     break
-                frappe.errprint(type(item.idx))
             if not original_item:
                 frappe.throw(_(
                     "Original item line {0} not found in invoice {1}"
