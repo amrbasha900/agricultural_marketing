@@ -1464,6 +1464,13 @@ function create_return_dialog(frm, returnable_items) {
     // Store dialog reference for filter functions
     window.current_return_dialog = return_dialog;
 
+    // A closed Dialog is only hidden, and the helpers below select rows by
+    // class across the whole page -- so every earlier dialog's checked rows
+    // were sent again with the next return, one extra copy per reopen.
+    return_dialog.$wrapper.on('hidden.bs.modal', function () {
+        return_dialog.$wrapper.remove();
+    });
+
     return_dialog.show();
 
     // Fix z-index issues for filter fields
@@ -1863,11 +1870,13 @@ function clear_return_filters() {
 }
 function get_selected_return_items() {
     let selected_items = [];
+    // Only the open dialog's rows, never a leftover one's.
+    let $root = window.current_return_dialog.$wrapper;
 
-    $('.return-item-checkbox:checked').each(function () {
+    $root.find('.return-item-checkbox:checked').each(function () {
         let idx = $(this).data('idx');
         let array_index = $(this).data('array-index');
-        let qty = parseFloat($(`.return-qty-input[data-idx="${idx}"]`).val()) || 0;
+        let qty = parseFloat($root.find(`.return-qty-input[data-idx="${idx}"]`).val()) || 0;
 
         if (qty > 0) {
             selected_items.push({

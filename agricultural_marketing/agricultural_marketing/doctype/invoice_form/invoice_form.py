@@ -5,7 +5,7 @@ from frappe import _
 from frappe.model.document import Document
 from erpnext.accounts.general_ledger import validate_accounting_period, make_entry
 from erpnext.accounts.party import get_party_account
-from frappe.utils import now
+from frappe.utils import cint, flt, now
 import copy
 from settings_manager.utils.data import money_in_words
 from frappe.model.naming import make_autoname
@@ -180,6 +180,11 @@ class InvoiceForm(Document):
 
         self._repost_gl_entries(from_manual=True)
         return True
+
+    def after_delete(self):
+        # The original's returned_qty counts this return; recount without it.
+        if self.is_return and self.return_against:
+            self.update_original_invoice_returned_quantities()
 
     def on_trash(self):
         # delete gl entries on deletion of transaction
@@ -1089,10 +1094,17 @@ class InvoiceForm(Document):
             return
         
         original_invoice = frappe.get_doc("Invoice Form", self.return_against)
-        
+
+        # Several rows of this return can point at the same original line, so
+        # the check is on their sum -- row by row, each copy fits on its own.
+        qty_per_line = {}
+        for return_item in self.items:
+            line = cint(getattr(return_item, 'original_item_idx', None))
+            qty_per_line[line] = qty_per_line.get(line, 0) + abs(flt(return_item.qty))
+
         # Validate each return item against specific original line using idx
         for return_item in self.items:
-            return_qty = abs(return_item.qty)  # Get absolute value
+            return_qty = qty_per_line[cint(getattr(return_item, 'original_item_idx', None))]
             
             # Get the original item line idx this return is for
             original_item_idx = getattr(return_item, 'original_item_idx', None)
@@ -3349,17 +3361,25 @@ def validate_return_items_by_idx(original_invoice, return_items):
     """
     Validate return items using idx-based tracking for identical lines
     """
+    # The same line can be sent more than once; what must fit is the sum.
+    qty_per_line = {}
+    for return_item in return_items:
+        array_index = int(return_item["array_index"])
+        qty_per_line[array_index] = qty_per_line.get(array_index, 0) + float(return_item["return_qty"])
+
     for return_item in return_items:
         return_qty = float(return_item["return_qty"])
-        
+
         if return_qty <= 0:
             return f"Return quantity must be greater than 0"
-        
+
         # Get original item using array_index
         array_index = int(return_item["array_index"])
         if array_index >= len(original_invoice.items):
             return f"Invalid line index: {array_index}"
-            
+
+        return_qty = qty_per_line[array_index]
+
         original_item = original_invoice.items[array_index]
         
         # Check available quantity for this specific line
