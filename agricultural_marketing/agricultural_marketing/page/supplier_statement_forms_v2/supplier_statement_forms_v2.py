@@ -1054,10 +1054,21 @@ def paginate(rows, rows_per_page, totals_rows=TOTALS_BLOCK_ROWS):
 # ---------------------------------------------------------------------------
 
 
-def build_context(filters, party, party_data):
-    """Assemble everything the template needs for one supplier."""
-    hide_decimal = _hide_decimal()
+def get_balances(filters, party, party_data):
+    """Opening and closing balance, taken from V1's summary and corrected.
 
+    V1's summary gets returns wrong in two places that V1 must not be edited to
+    fix, so the difference is applied here:
+
+    * Draft purchases by the linked customer are added to the opening balance
+      with ``abs()``, so a draft return raises the balance instead of lowering
+      it -- see :func:`_draft_linked_purchase_correction`.
+    * "Duration Buying" only enters the summary when positive, so a period
+      whose purchases are net returns leaves them out of the closing balance
+      even though the ledger rows show them.
+
+    Returns ``(summary, opening_balance, closing_balance)``.
+    """
     summary = v1.get_party_summary(
         filters=filters,
         party_type="Supplier",
@@ -1065,10 +1076,59 @@ def build_context(filters, party, party_data):
         party_data=party_data,
     )
 
-    opening = summary[0] if summary else {}
-    closing = summary[-1] if summary else {}
-    opening_balance = flt(opening.get("balance"))
-    closing_balance = flt(closing.get("balance"))
+    opening_balance = flt(summary[0].get("balance")) if summary else 0
+    closing_balance = flt(summary[-1].get("balance")) if summary else 0
+
+    correction = _draft_linked_purchase_correction(filters, party)
+    opening_balance += correction
+    closing_balance += correction
+
+    # A negative debit is a credit: the same flip append_summary() would apply.
+    total_buying = flt(_total_row(party_data.get("buying_items"), "invoice_id").get("total"))
+    if total_buying < 0:
+        closing_balance += total_buying
+
+    return summary, flt(opening_balance, 2), flt(closing_balance, 2)
+
+
+def _draft_linked_purchase_correction(filters, party):
+    """What V1's draft opening balance is off by, for the linked customer's rows.
+
+    Reads the same rows as ``get_draft_total_items`` in supplier_collection_form.
+    A purchase by the linked customer is a debit *with its sign*, as GL posts it
+    on submit, so a return (negative total) lowers the balance. V1 takes
+    ``abs()`` and raises it -- by twice the returned amount.
+
+    Only returns are corrected: a positive total needs no change.
+    """
+    if not (filters.get("consider_draft") and filters.get("from_date")):
+        return 0
+
+    invform = frappe.qb.DocType("Invoice Form")
+    invformitem = frappe.qb.DocType("Invoice Form Item")
+    rows = (
+        frappe.qb.from_(invform)
+        .left_join(invformitem)
+        .on(invformitem.parent == invform.name)
+        .where(invform.company == filters.get("company"))
+        .where(invformitem.customer == party)
+        .where(invformitem.couple_customer == 1)
+        .where(invform.docstatus == 0)
+        .where(invform.posting_date.lt(filters.get("from_date")))
+        .where(invformitem.total < 0)
+        .select(invformitem.total)
+        .run(as_dict=True)
+    )
+
+    # V1 added abs(total); the balance should move by total instead.
+    return sum(2 * flt(row.total) for row in rows)
+
+
+def build_context(filters, party, party_data):
+    """Assemble everything the template needs for one supplier."""
+    hide_decimal = _hide_decimal()
+
+    summary, opening_balance, closing_balance = get_balances(filters, party, party_data)
     period_balance = closing_balance - opening_balance
 
     rows, aggregates = build_ledger_rows(party_data, filters, party)
